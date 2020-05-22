@@ -177,7 +177,7 @@ impl PackageBuilder
     fn populate(&self, cache: &mut BuildCache, idx: &mut Vec<usize>) -> Result<()>
     {
         let mut path = match &self.name {
-            Some(name) => name.split(".").map(|s| s).collect(),
+            Some(name) => name.split('.').map(|s| s).collect(),
             None => vec![],
         };
 
@@ -252,16 +252,14 @@ impl MessageBuilder
         path.push(&self.name);
         let full_name = path.join(".");
         let cache_idx = cache.types.len();
-        match cache
+        if cache
             .items
             .insert(full_name.clone(), (ItemType::Message, cache_idx))
+            .is_some()
         {
-            Some(..) => {
-                return Err(Error::DuplicateType {
-                    name: path.join("."),
-                })
-            }
-            None => {}
+            return Err(Error::DuplicateType {
+                name: path.join("."),
+            });
         }
 
         cache.types.push(CacheData {
@@ -285,7 +283,7 @@ impl MessageBuilder
 
     fn take_type(&mut self, idx: &[usize]) -> ProtobufTypeBuilder
     {
-        if idx.len() == 0 {
+        if idx.is_empty() {
             ProtobufTypeBuilder::Message(MessageBuilder {
                 name: self.name.clone(),
                 fields: std::mem::take(&mut self.fields),
@@ -363,8 +361,8 @@ impl MessageBuilder
             name: self.name,
             full_name: self_data.full_name.clone(),
             self_ref: MessageRef(TypeRef(0)),
-            fields: fields,
-            inner_types: inner_types,
+            fields,
+            inner_types,
             oneofs,
         })
     }
@@ -415,7 +413,7 @@ fn resolve_multiplicity(
 ) -> Multiplicity
 {
     // If this isn't a repeated field, the multiplicity is always Single.
-    if repeated == false {
+    if !repeated {
         return Multiplicity::Single;
     }
 
@@ -503,16 +501,14 @@ impl EnumBuilder
         path.push(&self.name);
         let full_name = path.join(".");
         let cache_idx = cache.types.len();
-        match cache
+        if cache
             .items
             .insert(full_name.clone(), (ItemType::Enum, cache_idx))
+            .is_some()
         {
-            Some(..) => {
-                return Err(Error::DuplicateType {
-                    name: path.join("."),
-                })
-            }
-            None => {}
+            return Err(Error::DuplicateType {
+                name: path.join("."),
+            });
         }
         path.pop();
 
@@ -545,7 +541,7 @@ impl EnumBuilder
 
     fn take_type(&mut self, idx: &[usize]) -> ProtobufTypeBuilder
     {
-        if idx.len() != 0 {
+        if idx.is_empty() {
             panic!("Trying to take an inner type from an enum");
         }
 
@@ -568,16 +564,13 @@ impl ServiceBuilder
         path.push(&self.name);
         let full_name = path.join(".");
         let cache_idx = cache.services.len();
-        match cache
+        if let Some(..) = cache
             .items
             .insert(full_name.clone(), (ItemType::Service, cache_idx))
         {
-            Some(..) => {
-                return Err(Error::DuplicateType {
-                    name: path.join("."),
-                })
-            }
-            None => {}
+            return Err(Error::DuplicateType {
+                name: path.join("."),
+            });
         }
         path.pop();
 
@@ -702,7 +695,7 @@ impl BuildCache
 {
     fn resolve_type(&self, relative_name: &str, mut current_path: &str) -> Option<&CacheData>
     {
-        if relative_name.starts_with(".") {
+        if relative_name.starts_with('.') {
             return self.type_by_full_name(&relative_name[1..]);
         }
 
@@ -720,7 +713,7 @@ impl BuildCache
                 return None;
             }
 
-            match current_path.rfind(".") {
+            match current_path.rfind('.') {
                 Some(i) => {
                     let (start, _) = current_path.split_at(i);
                     current_path = start;

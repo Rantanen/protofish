@@ -151,12 +151,12 @@ impl ServiceBuilder
     {
         let mut inner = p.into_inner();
         let name = inner.next().unwrap();
-        let mut rpc = vec![];
+        let mut rpcs = vec![];
         let mut options = vec![];
         for p in inner {
             match p.as_rule() {
                 Rule::option => options.push(ProtoOption::parse(p)?),
-                Rule::rpc => rpc.push(RpcBuilder::parse(p)?),
+                Rule::rpc => rpcs.push(RpcBuilder::parse(p)?),
                 Rule::emptyStatement => {}
                 r => unreachable!("{:?}: {:?}", r, p),
             }
@@ -164,8 +164,8 @@ impl ServiceBuilder
 
         Ok(ServiceBuilder {
             name: name.as_str().to_string(),
-            rpcs: rpc,
-            options: options,
+            rpcs,
+            options,
         })
     }
 }
@@ -418,7 +418,7 @@ fn parse_string_literal(s: Pair<Rule>) -> Bytes
 {
     println!("Parsing string literal: {} ({:?})", s.as_str(), s.as_rule());
 
-    let inner = s.into_inner().into_iter();
+    let inner = s.into_inner();
     let mut output = BytesMut::new();
     for c in inner {
         let c = c.into_inner().next().unwrap();
@@ -456,7 +456,6 @@ fn parse_string_literal(s: Pair<Rule>) -> Bytes
 #[cfg(test)]
 mod test
 {
-    use super::builder::*;
     use super::*;
 
     #[test]

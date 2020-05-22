@@ -1,10 +1,10 @@
 #[test]
 fn repeated()
 {
-    use bytes::{BufMut, Bytes, BytesMut};
+    use bytes::BufMut;
     use protofish::{
         decode::{FieldValue, PackedArray},
-        Context, MessageValue, UnknownValue, Value,
+        Context, MessageValue, Value,
     };
 
     let context = Context::parse(&[r#"

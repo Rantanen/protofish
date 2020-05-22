@@ -42,6 +42,7 @@
 //!     Value::Incomplete(Bytes::from_static(b"\x0fAtlantic ")));
 //! ```
 #![warn(missing_docs)]
+#![allow(clippy::match_bool)]
 
 pub mod context;
 pub mod decode;

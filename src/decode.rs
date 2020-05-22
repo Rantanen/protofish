@@ -341,7 +341,7 @@ impl Value
             };
 
         value
-            .map(|o| Value::Unknown(o))
+            .map(Value::Unknown)
             .unwrap_or_else(|| Value::Incomplete(Bytes::copy_from_slice(data)))
     }
 }
@@ -429,7 +429,7 @@ impl MessageInfo
         };
 
         loop {
-            if data.len() == 0 {
+            if data.is_empty() {
                 break;
             }
 
@@ -441,10 +441,10 @@ impl MessageInfo
                 }
             };
 
-            let field_id = tag >> 3;
+            let number = tag >> 3;
             let wire_type = (tag & 0x07) as u8;
 
-            let value = match self.fields.get(&field_id) {
+            let value = match self.fields.get(&number) {
                 Some(field) => {
                     if field.multiplicity == Multiplicity::RepeatedPacked {
                         if wire_type == 2 {
@@ -452,21 +452,16 @@ impl MessageInfo
                         } else {
                             Value::decode_unknown(&mut data, wire_type)
                         }
+                    } else if field.field_type.wire_type() == wire_type {
+                        Value::decode(&mut data, &field.field_type, ctx)
                     } else {
-                        if field.field_type.wire_type() == wire_type {
-                            Value::decode(&mut data, &field.field_type, ctx)
-                        } else {
-                            Value::decode_unknown(&mut data, wire_type)
-                        }
+                        Value::decode_unknown(&mut data, wire_type)
                     }
                 }
                 _ => Value::decode_unknown(&mut data, wire_type),
             };
 
-            msg.fields.push(FieldValue {
-                number: field_id,
-                value: value,
-            })
+            msg.fields.push(FieldValue { number, value })
         }
 
         msg
@@ -526,7 +521,7 @@ where
             }
 
             let b = data[idx];
-            let value = (b & 0x7f) as i64;
+            let value = i64::from(b & 0x7f);
             result += value << (idx * 7);
 
             idx += 1;
