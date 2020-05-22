@@ -35,13 +35,13 @@ assert_eq!(output.fields[0].number, 1);
 assert_eq!(output.fields[0].value, Value::Int32(9001));
 ```
 
-# Goals
+## Goals
 
 - Protocol Buffers Version 3 support.
 - Standalone proto-file parser that does not depend on `protoc`.
 - Ability to decode partial and invalid Protocol Buffer messages.
 
-# Explicitly not goals
+## Explicitly not goals
 
 - Extremely blazingly fast for MAXIMUM PERFORMANCE.
   - Speed is great, but correctness, error recovery and maintainability have
@@ -53,7 +53,7 @@ assert_eq!(output.fields[0].value, Value::Int32(9001));
 - Code generation
   - There are few other crates that already do this.
 
-# Motivation
+## Motivation
 
 There are couple of other crate in the Rust ecosystem for handling Protocol
 Buffer messages. Most of these crates focus on compile time code generation
@@ -79,21 +79,21 @@ this once at program startup.
 [proto.pest]: src/proto.pest
 [proto-spec]: https://developers.google.com/protocol-buffers/docs/reference/proto3-spec
 
-# Missing features
+## Missing features
 
-## Packed repeated fields
+### Packed repeated fields
 
 The most pressing issue currently is support for packed repeated fields. This
 means all repeated primitive fields show up as invalid fields currently.
 Support for this is incoming once the base features have been refined.
 
-## Options
+### Options
 
 Protofish currently ignores all option statements in the proto-file. The
 support is coming with the packed repeated fields (since packing is defined as
 an option).
 
-## Handling `import` statements.. or not
+### Handling `import` statements.. or not
 
 Protofish _ignores_ `import` statements in the proto-files. Building a
 comprehensive decoding context depends on processing all files that contain the
