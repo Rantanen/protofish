@@ -1,4 +1,4 @@
-# ::\<Proto\>
+# ::\<proto\>
 ### proto-file parser and arbitrary Protocol Buffer message decoder
 
 <sub>_Despite the name styling, there are no generic arguments anywhere in the library and I'm so disappointed about that fact. ;\_;_</sub>
