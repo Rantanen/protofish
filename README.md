@@ -1,5 +1,7 @@
-# Protofish
+# ::\<Proto\>
 ### proto-file parser and arbitrary Protocol Buffer message decoder
+
+<sub>_Despite the name styling, there are no generic arguments anywhere in the library and I'm so disappointed about that fact. ;\_;_</sub>
 
 Protofish is a decoder focused on decoding arbitrary protocol buffer messages
 with error recovery. Its primary use case is decoding gRPC mesages in
