@@ -92,12 +92,15 @@ impl MessageBuilder
         for p in body.into_inner() {
             match p.as_rule() {
                 Rule::field => fields.push(FieldBuilder::parse(p)?),
-                Rule::oneof => oneofs.push(OneofBuilder::parse(p)?),
+                Rule::enum_ => inner_types.push(InnerTypeBuilder::Enum(EnumBuilder::parse(p)?)),
                 Rule::message => {
                     inner_types.push(InnerTypeBuilder::Message(MessageBuilder::parse(p)?))
                 }
-                Rule::enum_ => inner_types.push(InnerTypeBuilder::Enum(EnumBuilder::parse(p)?)),
                 Rule::option => options.push(ProtoOption::parse(p)?),
+                Rule::oneof => oneofs.push(OneofBuilder::parse(p)?),
+                Rule::mapField => unimplemented!("Maps are not supported"),
+                Rule::reserved => {} // We don't need to care about reserved field numbers.
+                Rule::emptyStatement => {}
                 r => unreachable!("{:?}: {:?}", r, p),
             }
         }
@@ -133,6 +136,7 @@ impl EnumBuilder
                     })
                 }
                 Rule::option => options.push(ProtoOption::parse(p)?),
+                Rule::emptyStatement => {}
                 r => unreachable!("{:?}: {:?}", r, p),
             }
         }
@@ -193,6 +197,27 @@ impl FieldBuilder
             options,
         })
     }
+
+    pub fn parse_oneof(p: Pair<Rule>) -> Result<Self>
+    {
+        let mut inner = p.into_inner();
+        let field_type = parse_field_type(inner.next().unwrap().as_str());
+        let name = inner.next().unwrap().as_str().to_string();
+        let number = parse_uint_literal(inner.next().unwrap())?;
+
+        let options = match inner.next() {
+            Some(p) => ProtoOption::parse_options(p.into_inner())?,
+            None => vec![],
+        };
+
+        Ok(FieldBuilder {
+            repeated: false,
+            field_type,
+            name,
+            number,
+            options,
+        })
+    }
 }
 
 impl OneofBuilder
@@ -206,7 +231,7 @@ impl OneofBuilder
         for p in inner {
             match p.as_rule() {
                 Rule::option => options.push(ProtoOption::parse(p)?),
-                Rule::oneofField => fields.push(FieldBuilder::parse(p)?),
+                Rule::oneofField => fields.push(FieldBuilder::parse_oneof(p)?),
                 Rule::emptyStatement => {}
                 r => unreachable!("{:?}: {:?}", r, p),
             }
