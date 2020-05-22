@@ -43,6 +43,9 @@ pub enum Value
     /// `bytes` value.
     Bytes(Bytes),
 
+    /// A repeated packed value.
+    Packed(PackedArray),
+
     /// Message type value.
     Message(Box<MessageValue>),
 
@@ -57,6 +60,38 @@ pub enum Value
     /// The wire type allows the decoder to tell how large an unknown value is. This allows the
     /// unknown value to be skipped and decoding can continue from the next value.
     Unknown(UnknownValue),
+}
+
+/// Packed scalar fields.
+#[derive(Debug, PartialEq)]
+pub enum PackedArray
+{
+    /// `double` value.
+    Double(Vec<f64>),
+    /// `float` value.
+    Float(Vec<f32>),
+    /// `int32` value.
+    Int32(Vec<i32>),
+    /// `int64` value.
+    Int64(Vec<i64>),
+    /// `uint32` value.
+    UInt32(Vec<u32>),
+    /// `uint64` value.
+    UInt64(Vec<u64>),
+    /// `sint32` value.
+    SInt32(Vec<i32>),
+    /// `sint64` value.
+    SInt64(Vec<i64>),
+    /// `fixed32` value.
+    Fixed32(Vec<u32>),
+    /// `fixed64` value.
+    Fixed64(Vec<u64>),
+    /// `sfixed32` value.
+    SFixed32(Vec<i32>),
+    /// `sfixed64` value.
+    SFixed64(Vec<i64>),
+    /// `bool` value.
+    Bool(Vec<bool>),
 }
 
 /// Unknown value.
@@ -181,7 +216,95 @@ impl Value
             }),
         };
 
-        opt.unwrap_or_else(|| Value::Incomplete(Bytes::copy_from_slice(data)))
+        opt.unwrap_or_else(|| {
+            *data = &[];
+            Value::Incomplete(Bytes::copy_from_slice(original))
+        })
+    }
+
+    fn decode_packed(data: &mut &[u8], vt: &ValueType) -> Self
+    {
+        let original = *data;
+        let length = match usize::from_unsigned_varint(data) {
+            Some(len) => len,
+            None => {
+                return return_incomplete(data, original);
+            }
+        };
+
+        if data.len() < length {
+            return return_incomplete(data, original);
+        }
+
+        let mut array = &data[..length];
+        *data = &data[length..];
+
+        macro_rules! read_packed {
+            ($variant:ident @ $val:ident = $try_read:expr => $insert:expr ) => {
+                let mut output = vec![];
+                loop {
+                    if array.is_empty() {
+                        break Value::Packed(PackedArray::$variant(output));
+                    }
+
+                    match $try_read {
+                        Some($val) => output.push($insert),
+                        None => return return_incomplete(&mut array, original),
+                    }
+                }
+            };
+        }
+
+        match vt {
+            ValueType::Double => {
+                read_packed! { Double @ b = try_read_8_bytes(&mut array) => f64::from_le_bytes(b) }
+            }
+            ValueType::Float => {
+                read_packed! { Float @ b = try_read_4_bytes(&mut array) => f32::from_le_bytes(b) }
+            }
+            ValueType::Int32 => {
+                read_packed! { Int32 @ b = i32::from_signed_varint(&mut array) => b }
+            }
+            ValueType::Int64 => {
+                read_packed! { Int64 @ b = i64::from_signed_varint(&mut array) => b }
+            }
+            ValueType::UInt32 => {
+                read_packed! { UInt32 @ b = u32::from_signed_varint(&mut array) => b }
+            }
+            ValueType::UInt64 => {
+                read_packed! { UInt64 @ b = u64::from_signed_varint(&mut array) => b }
+            }
+            ValueType::SInt32 => {
+                read_packed! { SInt32 @ b = u32::from_signed_varint(&mut array) => {
+                    let sign = if b % 2 == 0 { 1i32 } else { -1i32 };
+                    let magnitude = (b / 2) as i32;
+                    sign * magnitude
+                } }
+            }
+            ValueType::SInt64 => {
+                read_packed! { SInt64 @ b = u64::from_signed_varint(&mut array) => {
+                    let sign = if b % 2 == 0 { 1i64 } else { -1i64 };
+                    let magnitude = (b / 2) as i64;
+                    sign * magnitude
+                } }
+            }
+            ValueType::Fixed32 => {
+                read_packed! { Fixed32 @ b = try_read_4_bytes(&mut array) => u32::from_le_bytes(b) }
+            }
+            ValueType::Fixed64 => {
+                read_packed! { Fixed64 @ b = try_read_8_bytes(&mut array) => u64::from_le_bytes(b) }
+            }
+            ValueType::SFixed32 => {
+                read_packed! { SFixed32 @ b = try_read_4_bytes(&mut array) => i32::from_le_bytes(b) }
+            }
+            ValueType::SFixed64 => {
+                read_packed! { SFixed64 @ b = try_read_8_bytes(&mut array) => i64::from_le_bytes(b) }
+            }
+            ValueType::Bool => {
+                read_packed! { Bool @ b = u8::from_unsigned_varint(&mut array) => b != 0 }
+            }
+            _ => panic!("Non-scalar type was handled as packed"),
+        }
     }
 
     fn decode_unknown(data: &mut &[u8], vt: u8) -> Value
@@ -216,6 +339,12 @@ impl Value
             .map(|o| Value::Unknown(o))
             .unwrap_or_else(|| Value::Incomplete(Bytes::copy_from_slice(data)))
     }
+}
+
+fn return_incomplete(data: &mut &[u8], original: &[u8]) -> Value
+{
+    *data = &[];
+    Value::Incomplete(Bytes::copy_from_slice(original))
 }
 
 fn try_read_8_bytes(data: &mut &[u8]) -> Option<[u8; 8]>
@@ -308,13 +437,25 @@ impl MessageInfo
             };
 
             let field_id = tag >> 3;
-            let field_type = (tag & 0x07) as u8;
+            let wire_type = (tag & 0x07) as u8;
 
             let value = match self.fields.get(&field_id) {
-                Some(field) if field.field_type.tag() == field_type => {
-                    Value::decode(&mut data, &field.field_type, ctx)
+                Some(field) => {
+                    if field.multiplicity == Multiplicity::RepeatedPacked {
+                        if wire_type == 2 {
+                            Value::decode_packed(&mut data, &field.field_type)
+                        } else {
+                            Value::decode_unknown(&mut data, wire_type)
+                        }
+                    } else {
+                        if field.field_type.wire_type() == wire_type {
+                            Value::decode(&mut data, &field.field_type, ctx)
+                        } else {
+                            Value::decode_unknown(&mut data, wire_type)
+                        }
+                    }
                 }
-                _ => Value::decode_unknown(&mut data, field_type),
+                _ => Value::decode_unknown(&mut data, wire_type),
             };
 
             msg.fields.push(FieldValue {

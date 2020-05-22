@@ -396,15 +396,48 @@ impl FieldBuilder
         oneof: Option<usize>,
     ) -> Result<MessageField>
     {
+        let multiplicity = resolve_multiplicity(self.repeated, &self.field_type, &self.options);
         Ok(MessageField {
             name: self.name,
             number: self.number,
-            repeated: self.repeated,
+            multiplicity,
             field_type: self.field_type.build(self_data, cache)?,
             oneof,
-            options: vec![],
+            options: self.options,
         })
     }
+}
+
+fn resolve_multiplicity(
+    repeated: bool,
+    field_type: &FieldTypeBuilder,
+    options: &[ProtoOption],
+) -> Multiplicity
+{
+    // If this isn't a repeated field, the multiplicity is always Single.
+    if repeated == false {
+        return Multiplicity::Single;
+    }
+
+    // Repeated field.
+    match field_type {
+        // Non-scalar fields are always repeated.
+        FieldTypeBuilder::Unknown(..) => return Multiplicity::Repeated,
+        FieldTypeBuilder::Builtin(vt) if vt.wire_type() == 2 => return Multiplicity::Repeated,
+
+        // Scalar field.
+        _ => {}
+    }
+
+    // Check the options.
+    if let Some(opt) = options.iter().find(|o| o.name == "packed") {
+        return match opt.value {
+            Constant::Bool(true) => Multiplicity::RepeatedPacked,
+            _ => Multiplicity::Repeated,
+        };
+    }
+
+    Multiplicity::RepeatedPacked
 }
 
 impl FieldTypeBuilder

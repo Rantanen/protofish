@@ -179,13 +179,27 @@ pub struct MessageField
     pub field_type: ValueType,
 
     /// True, if this field is a repeated field.
-    pub repeated: bool,
+    pub multiplicity: Multiplicity,
 
     /// Field options.
     pub options: Vec<ProtoOption>,
 
     /// Index to the ´oneof` structure in the parent type if this field is part of a `oneof`.
     pub oneof: Option<usize>,
+}
+
+/// Defines the multiplicity of the field values.
+#[derive(Debug, PartialEq)]
+pub enum Multiplicity
+{
+    /// Field is not repeated.
+    Single,
+
+    /// Field may be repeated.
+    Repeated,
+
+    /// Field is repeated by packing.
+    RepeatedPacked,
 }
 
 /// Message `oneof` details.
@@ -458,7 +472,7 @@ impl Service
 
 impl ValueType
 {
-    pub(crate) fn tag(&self) -> u8
+    pub(crate) fn wire_type(&self) -> u8
     {
         match self {
             Self::Double => 1,
