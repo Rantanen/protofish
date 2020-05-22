@@ -629,7 +629,7 @@ mod test
                     ProtobufItemBuilder::Type(ProtobufTypeBuilder::Message(MessageBuilder {
                         name: "Message".to_string(),
                         fields: vec![FieldBuilder {
-                            repeated: Repeated::Single,
+                            repeated: false,
                             field_type: FieldTypeBuilder::Builtin(ValueType::UInt32),
                             name: "field".to_string(),
                             number: 1,

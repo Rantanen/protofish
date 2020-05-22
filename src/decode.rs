@@ -239,6 +239,11 @@ impl Value
         let mut array = &data[..length];
         *data = &data[length..];
 
+        // Reading the packed arrays follows very similar format for each type.  The variances are
+        // in how to read the data from the stream and what to do with the data to get the final
+        // value.
+        //
+        // This macro implements the basic structure with holes for the varying bits.
         macro_rules! read_packed {
             ($variant:ident @ $val:ident = $try_read:expr => $insert:expr ) => {
                 let mut output = vec![];
