@@ -1,7 +1,8 @@
 # ::\<proto\>
 ### proto-file parser and arbitrary Protocol Buffer message decoder
 
-<sub>_Despite the name styling, there are no generic arguments anywhere in the library and I'm so disappointed about that fact. ;\_;_</sub>
+[![crates.io](https://img.shields.io/crates/v/protofish.svg)](https://crates.io/crates/protofish)
+[![Docs](https://docs.rs/protofish/badge.svg)](https://docs.rs/protofish)
 
 Protofish is a decoder focused on decoding arbitrary protocol buffer messages
 with error recovery. Its primary use case is decoding gRPC mesages in
