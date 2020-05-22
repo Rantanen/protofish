@@ -541,7 +541,7 @@ impl EnumBuilder
 
     fn take_type(&mut self, idx: &[usize]) -> ProtobufTypeBuilder
     {
-        if idx.is_empty() {
+        if !idx.is_empty() {
             panic!("Trying to take an inner type from an enum");
         }
 
