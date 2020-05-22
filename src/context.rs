@@ -1,5 +1,6 @@
 //! Decoding context built from the proto-files.
 
+use bytes::Bytes;
 use snafu::{ResultExt, Snafu};
 use std::collections::{BTreeMap, HashMap};
 
@@ -210,6 +211,9 @@ pub struct EnumField
 
     /// Enum field value.
     pub value: i64,
+
+    /// Options.
+    pub options: Vec<ProtoOption>,
 }
 
 /// Field value types.
@@ -328,7 +332,37 @@ pub struct RpcArg
 
 /// A single option.
 #[derive(Debug, PartialEq, Clone)]
-pub struct ProtoOption {}
+pub struct ProtoOption
+{
+    /// Option name.
+    pub name: String,
+
+    /// Optionn value.
+    pub value: Constant,
+}
+
+/// Constant value, used for options.
+#[derive(Debug, PartialEq, Clone)]
+pub enum Constant
+{
+    /// An ident `foo.bar.baz`.
+    Ident(String),
+
+    /// An integer constant.
+    Integer(i64),
+
+    /// A floating point constant.
+    Float(f64),
+
+    /// A string constant.
+    ///
+    /// The string isn't guaranteed to be well formed UTF-8 so it's stored as
+    /// Bytes here.
+    String(Bytes),
+
+    /// A boolean constant.
+    Bool(bool),
+}
 
 impl Context
 {

@@ -1,4 +1,8 @@
-use pest::{iterators::Pair, Parser};
+use bytes::{BufMut, Bytes, BytesMut};
+use pest::{
+    iterators::{Pair, Pairs},
+    Parser,
+};
 
 use super::builder::*;
 use super::*;
@@ -83,6 +87,7 @@ impl MessageBuilder
         let mut fields = vec![];
         let mut oneofs = vec![];
         let mut inner_types = vec![];
+        let mut options = vec![];
         let body = inner.next().unwrap();
         for p in body.into_inner() {
             match p.as_rule() {
@@ -92,6 +97,7 @@ impl MessageBuilder
                     inner_types.push(InnerTypeBuilder::Message(MessageBuilder::parse(p)?))
                 }
                 Rule::enum_ => inner_types.push(InnerTypeBuilder::Enum(EnumBuilder::parse(p)?)),
+                Rule::option => options.push(ProtoOption::parse(p)?),
                 r => unreachable!("{:?}: {:?}", r, p),
             }
         }
@@ -101,6 +107,7 @@ impl MessageBuilder
             fields,
             oneofs,
             inner_types,
+            options,
         })
     }
 }
@@ -113,6 +120,7 @@ impl EnumBuilder
         let name = inner.next().unwrap().as_str().to_string();
 
         let mut fields = vec![];
+        let mut options = vec![];
         let body = inner.next().unwrap();
         for p in body.into_inner() {
             match p.as_rule() {
@@ -121,13 +129,19 @@ impl EnumBuilder
                     fields.push(EnumField {
                         name: inner.next().unwrap().as_str().to_string(),
                         value: parse_int_literal(inner.next().unwrap())?,
+                        options: ProtoOption::parse_options(inner)?,
                     })
                 }
+                Rule::option => options.push(ProtoOption::parse(p)?),
                 r => unreachable!("{:?}: {:?}", r, p),
             }
         }
 
-        Ok(EnumBuilder { name, fields })
+        Ok(EnumBuilder {
+            name,
+            fields,
+            options,
+        })
     }
 }
 
@@ -141,7 +155,7 @@ impl ServiceBuilder
         let mut options = vec![];
         for p in inner {
             match p.as_rule() {
-                Rule::option => options.push(parse_option(p)?),
+                Rule::option => options.push(ProtoOption::parse(p)?),
                 Rule::rpc => rpc.push(RpcBuilder::parse(p)?),
                 Rule::emptyStatement => {}
                 r => unreachable!("{:?}: {:?}", r, p),
@@ -160,22 +174,17 @@ impl FieldBuilder
 {
     pub fn parse(p: Pair<Rule>) -> Result<Self>
     {
-        let mut repeated = false;
-        let mut type_ = "";
-        let mut name = String::new();
-        let mut number = 0;
-        let mut options = Vec::new();
-        for p in p.into_inner() {
-            match p.as_rule() {
-                Rule::repeated => repeated = true,
-                Rule::type_ => type_ = p.as_str(),
-                Rule::fieldName => name = p.as_str().to_string(),
-                Rule::fieldNumber => number = parse_uint_literal(p)?,
-                Rule::fieldOptions => options = parse_options(p)?,
-                r => unreachable!("{:?}: {:?}", r, p),
-            }
-        }
-        let field_type = parse_field_type(type_);
+        let mut inner = p.into_inner();
+        let repeated = inner.next().unwrap().into_inner().next().is_some();
+        let field_type = parse_field_type(inner.next().unwrap().as_str());
+        let name = inner.next().unwrap().as_str().to_string();
+        let number = parse_uint_literal(inner.next().unwrap())?;
+
+        let options = match inner.next() {
+            Some(p) => ProtoOption::parse_options(p.into_inner())?,
+            None => vec![],
+        };
+
         Ok(FieldBuilder {
             repeated,
             field_type,
@@ -196,7 +205,7 @@ impl OneofBuilder
         let mut fields = vec![];
         for p in inner {
             match p.as_rule() {
-                Rule::option => options.push(parse_option(p)?),
+                Rule::option => options.push(ProtoOption::parse(p)?),
                 Rule::oneofField => fields.push(FieldBuilder::parse(p)?),
                 Rule::emptyStatement => {}
                 r => unreachable!("{:?}: {:?}", r, p),
@@ -268,7 +277,7 @@ impl RpcBuilder
         let mut options = vec![];
         for p in inner {
             match p.as_rule() {
-                Rule::option => options.push(parse_option(p)?),
+                Rule::option => options.push(ProtoOption::parse(p)?),
                 Rule::emptyStatement => {}
                 r => unreachable!("{:?}: {:?}", r, p),
             }
@@ -335,14 +344,113 @@ pub fn parse_int_literal(p: Pair<Rule>) -> Result<i64>
     }
 }
 
-pub fn parse_options(_p: Pair<Rule>) -> Result<Vec<ProtoOption>>
+pub fn parse_float_literal(p: Pair<Rule>) -> Result<f64>
 {
-    Ok(vec![])
+    match p.as_rule() {
+        Rule::floatLit => Ok(p.as_str().parse::<f64>().unwrap()),
+        r => unreachable!("{:?}: {:?}", r, p),
+    }
 }
 
-pub fn parse_option(_p: Pair<Rule>) -> Result<ProtoOption>
+impl ProtoOption
 {
-    Ok(ProtoOption {})
+    fn parse(p: Pair<Rule>) -> Result<Self>
+    {
+        let mut inner = p.into_inner();
+        Ok(Self {
+            name: parse_ident(inner.next().unwrap()),
+            value: Constant::parse(inner.next().unwrap())?,
+        })
+    }
+
+    fn parse_options(pairs: Pairs<Rule>) -> Result<Vec<Self>>
+    {
+        pairs
+            .map(|p| match p.as_rule() {
+                Rule::fieldOption => Self::parse(p),
+                Rule::enumValueOption => Self::parse(p),
+                Rule::option => Self::parse(p),
+                r => unreachable!("{:?}: {:?}", r, p),
+            })
+            .collect()
+    }
+}
+
+impl Constant
+{
+    fn parse(p: Pair<Rule>) -> Result<Self>
+    {
+        let p = p.into_inner().next().unwrap();
+        Ok(match p.as_rule() {
+            Rule::fullIdent => Constant::Ident(parse_ident(p)),
+            Rule::intLit => Constant::Integer(parse_int_literal(p)?),
+            Rule::floatLit => Constant::Float(parse_float_literal(p)?),
+            Rule::strLit => Constant::String(parse_string_literal(p)),
+            Rule::boolLit => Constant::Bool(p.as_str() == "true"),
+            r => unreachable!("{:?}: {:?}", r, p),
+        })
+    }
+}
+
+fn parse_ident(p: Pair<Rule>) -> String
+{
+    let mut ident = vec![];
+    let mut inner = p.into_inner();
+
+    let first = inner.next().unwrap();
+    match first.as_rule() {
+        Rule::ident => ident.push(first.as_str().to_string()),
+        Rule::fullIdent => ident.push(format!("({})", parse_ident(first))),
+        r => unreachable!("{:?}: {:?}", r, first),
+    }
+
+    for other in inner {
+        match other.as_rule() {
+            Rule::ident => ident.push(other.as_str().to_string()),
+            r => unreachable!("{:?}: {:?}", r, other),
+        }
+    }
+
+    ident.join(".")
+}
+
+fn parse_string_literal(s: Pair<Rule>) -> Bytes
+{
+    println!("Parsing string literal: {} ({:?})", s.as_str(), s.as_rule());
+
+    let inner = s.into_inner().into_iter();
+    let mut output = BytesMut::new();
+    for c in inner {
+        let c = c.into_inner().next().unwrap();
+        match c.as_rule() {
+            Rule::hexEscape => {
+                output.put_u8(
+                    u8::from_str_radix(c.into_inner().next().unwrap().as_str(), 16).unwrap(),
+                );
+            }
+            Rule::octEscape => {
+                output.put_u8(
+                    u8::from_str_radix(c.into_inner().next().unwrap().as_str(), 8).unwrap(),
+                );
+            }
+            Rule::charEscape => match c.into_inner().next().unwrap().as_str() {
+                "a" => output.put_u8(0x07),
+                "b" => output.put_u8(0x08),
+                "f" => output.put_u8(0x0C),
+                "n" => output.put_u8(0x0A),
+                "r" => output.put_u8(0x0D),
+                "t" => output.put_u8(0x09),
+                "v" => output.put_u8(0x0B),
+                "\\" => output.put_u8(0x5C),
+                "\'" => output.put_u8(0x27),
+                "\"" => output.put_u8(0x22),
+                o => unreachable!("Invalid escape sequence \\{}", o),
+            },
+            Rule::anyChar => output.put(c.as_str().as_ref()),
+            r => unreachable!("{:?}: {:?}", r, c),
+        }
+    }
+    output.freeze()
 }
 
 #[cfg(test)]
@@ -439,10 +547,12 @@ mod test
                             EnumField {
                                 name: "a".to_string(),
                                 value: 1,
+                                options: vec![],
                             },
                             EnumField {
                                 name: "b".to_string(),
                                 value: -1,
+                                options: vec![],
                             }
                         ],
                         ..Default::default()
@@ -484,6 +594,101 @@ mod test
                     },],
                     ..Default::default()
                 }),],
+                ..Default::default()
+            }
+        );
+    }
+
+    #[test]
+    fn options()
+    {
+        assert_eq!(
+            PackageBuilder::parse_str(
+                r#"
+                syntax = "proto3";
+
+                message Message {
+                    option mOption = "foo";
+                    uint32 field = 1 [ fOption = bar ];
+                }
+
+                enum Enum {
+                    value = 1 [ (a.b).c = 1, o2 = 2 ];
+                    option eOption = "banana";
+                }
+
+                service MyService {
+                    rpc function( Foo ) returns ( stream Bar ) { option o = true; }
+                    option sOption = "bar";
+                }
+            "#
+            )
+            .unwrap(),
+            PackageBuilder {
+                types: vec![
+                    ProtobufItemBuilder::Type(ProtobufTypeBuilder::Message(MessageBuilder {
+                        name: "Message".to_string(),
+                        fields: vec![FieldBuilder {
+                            repeated: false,
+                            field_type: FieldTypeBuilder::Builtin(ValueType::UInt32),
+                            name: "field".to_string(),
+                            number: 1,
+                            options: vec![ProtoOption {
+                                name: "fOption".to_string(),
+                                value: Constant::Ident("bar".to_string()),
+                            }],
+                        }],
+                        options: vec![ProtoOption {
+                            name: "mOption".to_string(),
+                            value: Constant::String(Bytes::from_static(b"foo")),
+                        }],
+                        ..Default::default()
+                    })),
+                    ProtobufItemBuilder::Type(ProtobufTypeBuilder::Enum(EnumBuilder {
+                        name: "Enum".to_string(),
+                        fields: vec![EnumField {
+                            name: "value".to_string(),
+                            value: 1,
+                            options: vec![
+                                ProtoOption {
+                                    name: "(a.b).c".to_string(),
+                                    value: Constant::Integer(1),
+                                },
+                                ProtoOption {
+                                    name: "o2".to_string(),
+                                    value: Constant::Integer(2),
+                                }
+                            ],
+                        }],
+                        options: vec![ProtoOption {
+                            name: "eOption".to_string(),
+                            value: Constant::String(Bytes::from_static(b"banana")),
+                        }],
+                        ..Default::default()
+                    })),
+                    ProtobufItemBuilder::Service(ServiceBuilder {
+                        name: "MyService".to_string(),
+                        rpcs: vec![RpcBuilder {
+                            name: "function".to_string(),
+                            input: RpcArgBuilder {
+                                stream: false,
+                                message: "Foo".to_string(),
+                            },
+                            output: RpcArgBuilder {
+                                stream: true,
+                                message: "Bar".to_string(),
+                            },
+                            options: vec![ProtoOption {
+                                name: "o".to_string(),
+                                value: Constant::Bool(true),
+                            }]
+                        },],
+                        options: vec![ProtoOption {
+                            name: "sOption".to_string(),
+                            value: Constant::String(Bytes::from_static(b"bar")),
+                        }]
+                    }),
+                ],
                 ..Default::default()
             }
         );

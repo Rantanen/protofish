@@ -40,6 +40,7 @@ pub(crate) struct MessageBuilder
     pub(crate) fields: Vec<FieldBuilder>,
     pub(crate) oneofs: Vec<OneofBuilder>,
     pub(crate) inner_types: Vec<InnerTypeBuilder>,
+    pub(crate) options: Vec<ProtoOption>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -54,6 +55,7 @@ pub(crate) struct EnumBuilder
 {
     pub(crate) name: String,
     pub(crate) fields: Vec<EnumField>,
+    pub(crate) options: Vec<ProtoOption>,
 }
 
 #[derive(Default, Debug, PartialEq)]
@@ -288,6 +290,7 @@ impl MessageBuilder
                 name: self.name.clone(),
                 fields: std::mem::take(&mut self.fields),
                 oneofs: std::mem::take(&mut self.oneofs),
+                options: std::mem::take(&mut self.options),
                 inner_types: self
                     .inner_types
                     .iter()
