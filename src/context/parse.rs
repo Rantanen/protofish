@@ -441,8 +441,6 @@ fn parse_ident(p: Pair<Rule>) -> String
 
 fn parse_string_literal(s: Pair<Rule>) -> Bytes
 {
-    println!("Parsing string literal: {} ({:?})", s.as_str(), s.as_rule());
-
     let inner = s.into_inner();
     let mut output = BytesMut::new();
     for c in inner {
