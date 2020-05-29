@@ -14,12 +14,15 @@ struct ProtoParser;
 impl Context
 {
     /// Parses the files and creates a decoding context.
-    pub fn parse(files: &[&str]) -> Result<Self>
+    pub fn parse<T, S>(files: T) -> Result<Self>
+    where
+        T: IntoIterator<Item = S>,
+        S: AsRef<str>,
     {
         let builder = ContextBuilder {
             packages: files
-                .iter()
-                .map(|f| PackageBuilder::parse_str(f))
+                .into_iter()
+                .map(|f| PackageBuilder::parse_str(f.as_ref()))
                 .collect::<Result<_, _>>()?,
         };
 
@@ -514,6 +517,25 @@ mod test
     }
 
     #[test]
+    fn bom()
+    {
+        assert_eq!(
+            PackageBuilder::parse_str(&format!(
+                "\u{FEFF}{}",
+                r#"
+                syntax = "proto3";
+                package Test;
+            "#
+            ))
+            .unwrap(),
+            PackageBuilder {
+                name: Some("Test".to_string()),
+                ..Default::default()
+            }
+        );
+    }
+
+    #[test]
     fn message()
     {
         assert_eq!(
@@ -714,5 +736,13 @@ mod test
                 ..Default::default()
             }
         );
+    }
+
+    #[test]
+    fn parse_string_vec()
+    {
+        let _ = Context::parse(&["foo", "bar"]);
+        let _ = Context::parse(vec!["foo", "bar"]);
+        let _ = Context::parse(vec!["foo".to_string(), "bar".to_string()]);
     }
 }

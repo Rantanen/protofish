@@ -1,5 +1,6 @@
 WHITESPACE = _{ " " | "\t" | "\n" | "\r" }
 COMMENT = _{ "//" ~ (!"\n" ~ ANY)* | "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
+BOM = _{ "\u{feff}" }
 
 letter = { 'A'..'Z' | 'a'..'z' }
 decimalDigit = { '0'..'9' }
@@ -90,5 +91,5 @@ opt_stream = { stream? }
 rpcParam = { opt_stream ~ messageType }
 rpc = { "rpc" ~ rpcName ~ "(" ~ rpcParam ~ ")" ~ "returns" ~ "(" ~ rpcParam ~ ")" ~ (( "{" ~ ( option | emptyStatement )* ~ "}" ) | ";") }
 
-proto = { SOI ~ syntax ~ ( import | package | option | topLevelDef | emptyStatement )* ~ EOI }
+proto = { SOI ~ BOM? ~ syntax ~ ( import | package | option | topLevelDef | emptyStatement )* ~ EOI }
 topLevelDef = { message | enum_ | service }
