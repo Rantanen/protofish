@@ -286,15 +286,15 @@ pub enum ValueType
     Enum(EnumRef),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct TypeRef(usize);
 
 /// A reference to a message. Can be resolved to `MessageInfo` through a `Context`.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct MessageRef(TypeRef);
 
 /// A reference to an enum. Can be resolved to `EnumInfo` through a `Context`.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct EnumRef(TypeRef);
 
 /// Service details

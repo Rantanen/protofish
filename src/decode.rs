@@ -9,7 +9,7 @@ use std::convert::{TryFrom, TryInto};
 use std::fmt::Debug;
 
 /// Decoded protocol buffer value.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Value
 {
     /// `double` value.
@@ -63,7 +63,7 @@ pub enum Value
 }
 
 /// Packed scalar fields.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum PackedArray
 {
     /// `double` value.
@@ -95,7 +95,7 @@ pub enum PackedArray
 }
 
 /// Unknown value.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum UnknownValue
 {
     /// Unknown varint (wire type = 0).
@@ -121,7 +121,7 @@ pub enum UnknownValue
 }
 
 /// Enum value.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct EnumValue
 {
     /// Reference to the enum type.
@@ -132,7 +132,7 @@ pub struct EnumValue
 }
 
 /// Message value.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct MessageValue
 {
     /// Reference to the message type.
@@ -149,7 +149,7 @@ pub struct MessageValue
 }
 
 /// Field value.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct FieldValue
 {
     /// Field number.
