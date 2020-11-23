@@ -8,6 +8,25 @@ mod api;
 mod builder;
 mod parse;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct InternalRef(usize);
+
+/// A reference to a message. Can be resolved to `MessageInfo` through a `Context`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct MessageRef(InternalRef);
+
+/// A reference to an enum. Can be resolved to `EnumInfo` through a `Context`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct EnumRef(InternalRef);
+
+/// A reference to a package.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PackageRef(InternalRef);
+
+/// A reference to a service.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ServiceRef(InternalRef);
+
 /// Protofish error type.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
@@ -117,10 +136,10 @@ pub struct Context
 }
 
 #[derive(Default, Debug)]
-struct Package
+pub struct Package
 {
     name: Option<String>,
-    types: Vec<usize>,
+    types: Vec<TypeRef>,
     services: Vec<usize>,
 }
 
@@ -137,6 +156,7 @@ pub enum TypeInfo
 
 /// Message details
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct MessageInfo
 {
     /// Message name.
@@ -144,6 +164,9 @@ pub struct MessageInfo
 
     /// Full message name, including package and parent type names.
     pub full_name: String,
+
+    /// Parent
+    pub parent: TypeParent,
 
     /// `MessageRef` that references this message.
     pub self_ref: MessageRef,
@@ -156,6 +179,13 @@ pub struct MessageInfo
 
     /// References to the inner types defined within this message.
     pub inner_types: Vec<InnerType>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum TypeParent
+{
+    Package(PackageRef),
+    Message(MessageRef),
 }
 
 /// Inner type reference.
@@ -171,6 +201,7 @@ pub enum InnerType
 
 /// Enum details
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct EnumInfo
 {
     /// Enum name.
@@ -178,6 +209,9 @@ pub struct EnumInfo
 
     /// Full message name, including package and parent type names.
     pub full_name: String,
+
+    /// Parent
+    pub parent: TypeParent,
 
     /// `EnumRef` that references this enum.
     pub self_ref: EnumRef,
@@ -190,6 +224,7 @@ pub struct EnumInfo
 
 /// Message field details.
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct MessageField
 {
     /// Field name.
@@ -227,6 +262,7 @@ pub enum Multiplicity
 
 /// Message `oneof` details.
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct Oneof
 {
     /// Name of the `oneof` structure.
@@ -241,6 +277,7 @@ pub struct Oneof
 
 /// Enum field details.
 #[derive(Debug, PartialEq, Clone)]
+#[non_exhaustive]
 pub struct EnumField
 {
     /// Enum field name.
@@ -309,19 +346,9 @@ pub enum ValueType
     Enum(EnumRef),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-struct InternalRef(usize);
-
-/// A reference to a message. Can be resolved to `MessageInfo` through a `Context`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct MessageRef(InternalRef);
-
-/// A reference to an enum. Can be resolved to `EnumInfo` through a `Context`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct EnumRef(InternalRef);
-
 /// Service details
 #[derive(Debug, PartialEq)]
+#[non_exhaustive]
 pub struct Service
 {
     /// Service name.
@@ -329,6 +356,12 @@ pub struct Service
 
     /// Full service name, including the package name.
     pub full_name: String,
+
+    /// Service self reference.
+    pub self_ref: ServiceRef,
+
+    /// Package that contains the service.
+    pub parent: PackageRef,
 
     /// List of `rpc` operations defined in the service.
     pub rpcs: Vec<Rpc>,
@@ -341,6 +374,7 @@ pub struct Service
 
 /// Rpc operation
 #[derive(Debug, PartialEq)]
+#[non_exhaustive]
 pub struct Rpc
 {
     /// Operation name.
@@ -358,6 +392,7 @@ pub struct Rpc
 
 /// Rpc operation input or output details.
 #[derive(Debug, PartialEq)]
+#[non_exhaustive]
 pub struct RpcArg
 {
     /// References to the message type.
@@ -399,4 +434,61 @@ pub enum Constant
 
     /// A boolean constant.
     Bool(bool),
+}
+
+#[cfg(test)]
+mod test
+{
+    use super::*;
+
+    #[test]
+    fn basic_package()
+    {
+        let ctx = Context::parse(&[r#"
+            syntax = "proto3";
+            message Message {}
+        "#])
+        .unwrap();
+
+        let m = ctx.get_message("Message").unwrap();
+        assert_eq!(m.parent, TypeParent::Package(PackageRef(InternalRef(0))));
+    }
+
+    #[test]
+    fn basic_multiple_package()
+    {
+        let ctx = Context::parse(&[
+            r#"
+                syntax = "proto3";
+                package First;
+                message Message {}
+            "#,
+            r#"
+                syntax = "proto3";
+                package Second;
+                message Message {}
+            "#,
+        ])
+        .unwrap();
+
+        let m = ctx.get_message("First.Message").unwrap();
+        let pkg_ref = match m.parent {
+            TypeParent::Package(p) => p,
+            _ => panic!("Not a package reference: {:?}", m.parent),
+        };
+        let pkg = ctx.resolve_package(pkg_ref);
+        assert_eq!(m.parent, TypeParent::Package(PackageRef(InternalRef(0))));
+        assert_eq!(pkg.name.as_deref(), Some("First"));
+        assert_eq!(pkg.types.len(), 1);
+
+        let m = ctx.get_message("Second.Message").unwrap();
+        let pkg_ref = match m.parent {
+            TypeParent::Package(p) => p,
+            _ => panic!("Not a package reference: {:?}", m.parent),
+        };
+        let pkg = ctx.resolve_package(pkg_ref);
+        assert_eq!(m.parent, TypeParent::Package(PackageRef(InternalRef(1))));
+        assert_eq!(pkg.name.as_deref(), Some("Second"));
+        assert_eq!(pkg.types.len(), 1);
+    }
 }

@@ -14,6 +14,15 @@ impl Context
         }
     }
 
+    /// Resolves a package reference.
+    ///
+    /// Will **panic** if the package defined by the `PackageRef` does not exist in this context.
+    /// Such panic means the `PackageRef` came from a different context. The panic is not
+    /// guaranteed, as a message with an equal `MessageRef` may exist in multiple contexts.
+    pub fn resolve_package(&self, package_ref: PackageRef) -> &Package {
+        &self.packages[package_ref.0.0]
+    }
+
     /// Gets type info by name.
     pub fn get_type(&self, full_name: &str) -> Option<&TypeInfo>
     {
@@ -88,7 +97,7 @@ impl Context
 
         // First validate the operation. We'll want to ensure the operation succeeds before we make
         // _any_ changes to the context to avoid making partial changes in case of a failure.
-        let type_ref = InternalRef(self.types.len());
+        let internal_ref = InternalRef(self.types.len());
         let full_name = ty.full_name();
 
         let mut name_split = full_name.rsplitn(1, ".");
@@ -101,10 +110,10 @@ impl Context
 
         let vacant = match self.types_by_name.entry(full_name.clone()) {
             Entry::Occupied(occupied) => {
-                let type_ref = InternalRef(*occupied.get());
-                let original = match self.types[type_ref.0] {
-                    TypeInfo::Message(..) => TypeRef::Message(MessageRef(type_ref)),
-                    TypeInfo::Enum(..) => TypeRef::Enum(EnumRef(type_ref)),
+                let original_ref = InternalRef(*occupied.get());
+                let original = match self.types[original_ref.0] {
+                    TypeInfo::Message(..) => TypeRef::Message(MessageRef(original_ref)),
+                    TypeInfo::Enum(..) => TypeRef::Enum(EnumRef(original_ref)),
                 };
                 return Err(InsertError::TypeExists { original });
             }
@@ -128,16 +137,22 @@ impl Context
         };
         let package = &mut self.packages[package_idx];
 
-        match &mut ty {
-            TypeInfo::Message(m) => m.self_ref = MessageRef(type_ref),
-            TypeInfo::Enum(e) => e.self_ref = EnumRef(type_ref),
-        }
+        let type_ref = match &mut ty {
+            TypeInfo::Message(m) => {
+                m.self_ref = MessageRef(internal_ref);
+                TypeRef::Message(m.self_ref)
+            }
+            TypeInfo::Enum(e) => {
+                e.self_ref = EnumRef(internal_ref);
+                TypeRef::Enum(e.self_ref)
+            }
+        };
 
-        vacant.insert(type_ref.0);
+        vacant.insert(internal_ref.0);
         self.types.push(ty);
-        package.types.push(type_ref.0);
+        package.types.push(type_ref);
 
-        Ok(type_ref)
+        Ok(internal_ref)
     }
 
     fn find_package_index(&self, name: Option<&str>) -> Option<usize>

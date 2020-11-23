@@ -126,8 +126,8 @@ impl ContextBuilder
                     let ty = self.take_type(&cache_data.idx_path);
                     let mut t = ty.build(cache_data, &cache)?;
                     match &mut t {
-                        TypeInfo::Message(m) => m.self_ref = MessageRef(InternalRef(types.len())),
-                        TypeInfo::Enum(e) => e.self_ref = EnumRef(InternalRef(types.len())),
+                        TypeInfo::Message(m) => assert_eq!(m.self_ref.0.0, types.len()),
+                        TypeInfo::Enum(e) => assert_eq!(e.self_ref.0.0, types.len()),
                     }
                     types.push(t);
                 }
@@ -152,8 +152,46 @@ impl ContextBuilder
             .map(|(idx, t)| (t.full_name.clone(), idx))
             .collect();
 
+        let mut packages: Vec<Package> = self
+            .packages
+            .into_iter()
+            .map(|p| Package {
+                name: p.name,
+                types: Vec::new(),
+                services: Vec::new(),
+            })
+            .collect();
+
+        for s in &services {
+            let p = &mut packages[s.parent.0.0];
+            p.services.push(s.self_ref.0.0);
+        }
+
+        let mut add_child_types = Vec::new();
+        for t in &types {
+            let (self_ref, raw_self_ref, parent) = match t {
+                TypeInfo::Message(m) => (InnerType::Message(m.self_ref), TypeRef::Message(m.self_ref), &m.parent),
+                TypeInfo::Enum(e) => (InnerType::Enum(e.self_ref), TypeRef::Enum(e.self_ref), &e.parent),
+            };
+            match parent {
+                TypeParent::Package(p_ref) => {
+                    let p = &mut packages[p_ref.0.0];
+                    p.types.push(raw_self_ref);
+                }
+                TypeParent::Message(m_ref) => {
+                    add_child_types.push((*m_ref, self_ref));
+                }
+            }
+        }
+        for (parent, child) in add_child_types {
+            match &mut types[parent.0.0] {
+                TypeInfo::Message(m) => m.inner_types.push(child),
+                _ => panic!("Inner type on non-message type"),
+            }
+        }
+
         Ok(Context {
-            packages: vec![],
+            packages,
             types,
             types_by_name,
             services,
@@ -256,12 +294,18 @@ impl MessageBuilder
             .items
             .insert(full_name.clone(), (ItemType::Message, cache_idx))
             .is_some()
+            || cache
+                .items_by_idx
+                .insert(idx.clone(), (ItemType::Message, cache_idx))
+                .is_some()
         {
             return Err(ParseError::DuplicateType {
                 name: path.join("."),
             });
         }
 
+        // Make sure to push the current type into the cache before processing the possible
+        // embedded types.
         cache.types.push(CacheData {
             item_type: ItemType::Message,
             full_name,
@@ -357,10 +401,13 @@ impl MessageBuilder
                 .collect();
         }
 
+        let parent = cache.parent_type(&self_data.idx_path);
+
         Ok(MessageInfo {
             name: self.name,
             full_name: self_data.full_name.clone(),
-            self_ref: MessageRef(InternalRef(0)),
+            parent,
+            self_ref: MessageRef(InternalRef(self_data.final_idx)),
             fields,
             inner_types,
             oneofs,
@@ -522,7 +569,7 @@ impl EnumBuilder
         Ok(())
     }
 
-    fn build(self, self_data: &CacheData, _cache: &BuildCache) -> Result<EnumInfo, ParseError>
+    fn build(self, self_data: &CacheData, cache: &BuildCache) -> Result<EnumInfo, ParseError>
     {
         let fields_by_value = self
             .fields
@@ -530,10 +577,14 @@ impl EnumBuilder
             .enumerate()
             .map(|(idx, f)| (f.value, idx))
             .collect();
+
+        let parent = cache.parent_type(&self_data.idx_path);
+
         Ok(EnumInfo {
             name: self.name,
             full_name: self_data.full_name.to_string(),
-            self_ref: EnumRef(InternalRef(0)),
+            self_ref: EnumRef(InternalRef(self_data.final_idx)),
+            parent,
             fields: self.fields,
             fields_by_value,
         })
@@ -597,8 +648,15 @@ impl ServiceBuilder
             .map(|(idx, rpc)| (rpc.name.to_string(), idx))
             .collect();
 
+        let parent = match cache.parent_type(&self_data.idx_path) {
+            TypeParent::Package(p) => p,
+            _ => panic!("Service inside a message"),
+        };
+
         Ok(Service {
             name: self.name,
+            self_ref: ServiceRef(InternalRef(self_data.final_idx)),
+            parent,
             full_name: self_data.full_name.clone(),
             rpcs,
             rpcs_by_name,
@@ -679,6 +737,7 @@ impl EnumRef
 struct BuildCache
 {
     items: BTreeMap<String, (ItemType, usize)>,
+    items_by_idx: BTreeMap<Vec<usize>, (ItemType, usize)>,
     types: Vec<CacheData>,
     services: Vec<CacheData>,
 }
@@ -689,6 +748,12 @@ struct CacheData
     idx_path: Vec<usize>,
     final_idx: usize,
     full_name: String,
+}
+
+enum CacheParent
+{
+    Package(InternalRef),
+    Message(InternalRef),
 }
 
 impl BuildCache
@@ -725,10 +790,29 @@ impl BuildCache
         }
     }
 
+    fn parent_type(&self, current: &[usize]) -> TypeParent
+    {
+        match current.len() {
+            0 | 1 => panic!("Empty type ID path"),
+            2 => TypeParent::Package(PackageRef(InternalRef(current[0]))),
+            _ => self
+                .type_by_idx_path(&current[..current.len() - 1])
+                .map(|data| TypeParent::Message(MessageRef(InternalRef(data.final_idx))))
+                .expect(&format!("Parent type not found: {:?}", current)),
+        }
+    }
+
     fn type_by_full_name(&self, full_name: &str) -> Option<&CacheData>
     {
         self.items
             .get(full_name)
+            .and_then(|(ty, i)| self.type_by_idx(*ty, *i))
+    }
+
+    fn type_by_idx_path(&self, idx: &[usize]) -> Option<&CacheData>
+    {
+        self.items_by_idx
+            .get(idx)
             .and_then(|(ty, i)| self.type_by_idx(*ty, *i))
     }
 
