@@ -62,6 +62,30 @@ pub enum ParseError
     },
 }
 
+/// Error modifying the context.
+#[derive(Debug, Snafu)]
+pub enum InsertError
+{
+    /// A type conflicts with an existing type.
+    TypeExists
+    {
+        original: TypeRef
+    },
+
+    /// A required package was not found in the context.
+    PackageNotFound
+    {
+        package: String
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TypeRef
+{
+    Message(MessageRef),
+    Enum(EnumRef),
+}
+
 /// Protobuf item type
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ItemType
@@ -377,6 +401,12 @@ pub enum Constant
 
 impl Context
 {
+    /// Create a new context.
+    pub fn new() -> Self
+    {
+        Default::default()
+    }
+
     /// Gets type info by name.
     pub fn get_type(&self, full_name: &str) -> Option<&TypeInfo>
     {
@@ -431,6 +461,91 @@ impl Context
         self.services_by_name
             .get(full_name)
             .map(|idx| &self.services[*idx])
+    }
+
+    /// Insert a new message definition to the context.
+    pub fn insert_message(&mut self, ty: MessageInfo) -> Result<MessageRef, InsertError>
+    {
+        self.insert_type(TypeInfo::Message(ty)).map(MessageRef)
+    }
+
+    /// Insert a new enum definition to the context.
+    pub fn insert_enum(&mut self, ty: EnumInfo) -> Result<EnumRef, InsertError>
+    {
+        self.insert_type(TypeInfo::Enum(ty)).map(EnumRef)
+    }
+
+    fn insert_type(&mut self, mut ty: TypeInfo) -> Result<InternalRef, InsertError>
+    {
+        use std::collections::hash_map::Entry;
+
+        // First validate the operation. We'll want to ensure the operation succeeds before we make
+        // _any_ changes to the context to avoid making partial changes in case of a failure.
+        let type_ref = InternalRef(self.types.len());
+        let full_name = ty.full_name();
+
+        let mut name_split = full_name.rsplitn(1, ".");
+        let _type_name = name_split
+            .next()
+            .expect("Name should have at least one segment");
+        let package_name = name_split.next();
+
+        let package_idx = self.find_package_index(package_name);
+
+        let vacant = match self.types_by_name.entry(full_name.clone()) {
+            Entry::Occupied(occupied) => {
+                let type_ref = InternalRef(*occupied.get());
+                let original = match self.types[type_ref.0] {
+                    TypeInfo::Message(..) => TypeRef::Message(MessageRef(type_ref)),
+                    TypeInfo::Enum(..) => TypeRef::Enum(EnumRef(type_ref)),
+                };
+                return Err(InsertError::TypeExists { original });
+            }
+            Entry::Vacant(vacant) => vacant,
+        };
+
+        // From here on, we're modifying the context.
+        // All validations should be done now.
+
+        let package_idx = match package_idx {
+            Some(idx) => idx,
+            None => {
+                let idx = self.packages.len();
+                self.packages.push(Package {
+                    name: package_name.map(str::to_string),
+                    types: vec![],
+                    services: vec![],
+                });
+                idx
+            }
+        };
+        let package = &mut self.packages[package_idx];
+
+        match &mut ty {
+            TypeInfo::Message(m) => m.self_ref = MessageRef(type_ref),
+            TypeInfo::Enum(e) => e.self_ref = EnumRef(type_ref),
+        }
+
+        vacant.insert(type_ref.0);
+        self.types.push(ty);
+        package.types.push(type_ref.0);
+
+        Ok(type_ref)
+    }
+
+    fn find_package_index(&self, name: Option<&str>) -> Option<usize>
+    {
+        self.packages
+            .iter()
+            .enumerate()
+            .filter_map(|(i, p)| {
+                if p.name.as_deref() == name {
+                    Some(i)
+                } else {
+                    None
+                }
+            })
+            .next()
     }
 }
 
