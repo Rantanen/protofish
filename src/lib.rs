@@ -46,6 +46,3 @@
 
 pub mod context;
 pub mod decode;
-
-pub use crate::context::{Context, MessageInfo, ParseError};
-pub use crate::decode::{EnumValue, MessageValue, UnknownValue, Value};

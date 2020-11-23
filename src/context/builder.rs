@@ -750,12 +750,6 @@ struct CacheData
     full_name: String,
 }
 
-enum CacheParent
-{
-    Package(InternalRef),
-    Message(InternalRef),
-}
-
 impl BuildCache
 {
     fn resolve_type(&self, relative_name: &str, mut current_path: &str) -> Option<&CacheData>

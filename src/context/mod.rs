@@ -135,6 +135,7 @@ pub struct Context
     services_by_name: HashMap<String, usize>,
 }
 
+/// Package details.
 #[derive(Default, Debug)]
 pub struct Package
 {
@@ -181,10 +182,14 @@ pub struct MessageInfo
     pub inner_types: Vec<InnerType>,
 }
 
+/// Reference to a type parent.
 #[derive(Debug, PartialEq, Eq)]
 pub enum TypeParent
 {
+    /// Reference to a package for top-level types.
     Package(PackageRef),
+
+    /// Reference to a message for inner types.
     Message(MessageRef),
 }
 
