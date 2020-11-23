@@ -10,11 +10,11 @@ mod parse;
 /// Protofish error type.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
-pub enum Error
+pub enum ParseError
 {
     /// Syntax error in the input files.
     #[snafu(display("Parsing error: {}", source))]
-    ParseError
+    SyntaxError
     {
         /// Source error.
         source: Box<dyn std::error::Error + Send + Sync>,
@@ -75,9 +75,6 @@ pub enum ItemType
     /// `service` item
     Service,
 }
-
-/// Result alias for the context errors.
-pub type Result<S, E = Error> = std::result::Result<S, E>;
 
 /// Protofish decoding context.
 ///
@@ -287,15 +284,15 @@ pub enum ValueType
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-struct TypeRef(usize);
+struct InternalRef(usize);
 
 /// A reference to a message. Can be resolved to `MessageInfo` through a `Context`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct MessageRef(TypeRef);
+pub struct MessageRef(InternalRef);
 
 /// A reference to an enum. Can be resolved to `EnumInfo` through a `Context`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct EnumRef(TypeRef);
+pub struct EnumRef(InternalRef);
 
 /// Service details
 #[derive(Debug, PartialEq)]
@@ -397,7 +394,7 @@ impl Context
         }
     }
 
-    fn resolve_type(&self, tr: TypeRef) -> Option<&TypeInfo>
+    fn resolve_type(&self, tr: InternalRef) -> Option<&TypeInfo>
     {
         self.types.get(tr.0)
     }

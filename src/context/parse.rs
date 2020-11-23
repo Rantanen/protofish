@@ -14,7 +14,7 @@ struct ProtoParser;
 impl Context
 {
     /// Parses the files and creates a decoding context.
-    pub fn parse<T, S>(files: T) -> Result<Self>
+    pub fn parse<T, S>(files: T) -> Result<Self, ParseError>
     where
         T: IntoIterator<Item = S>,
         S: AsRef<str>,
@@ -32,11 +32,11 @@ impl Context
 
 impl PackageBuilder
 {
-    pub fn parse_str(input: &str) -> Result<Self>
+    pub fn parse_str(input: &str) -> Result<Self, ParseError>
     {
         let pairs = ProtoParser::parse(Rule::proto, &input)
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
-            .context(ParseError {})?;
+            .context(SyntaxError {})?;
 
         let mut current_package = PackageBuilder::default();
         for pair in pairs {
@@ -45,7 +45,7 @@ impl PackageBuilder
                     Rule::syntax => {}
                     Rule::topLevelDef => current_package
                         .types
-                        .push(ProtobufItemBuilder::parse(inner)?),
+                        .push(ProtobufItemBuilder::parse(inner)),
                     Rule::import => {}
                     Rule::package => {
                         current_package.name =
@@ -64,25 +64,25 @@ impl PackageBuilder
 
 impl ProtobufItemBuilder
 {
-    pub fn parse(p: Pair<Rule>) -> Result<Self>
+    pub fn parse(p: Pair<Rule>) -> Self
     {
         let pair = p.into_inner().next().unwrap();
-        Ok(match pair.as_rule() {
-            Rule::message => ProtobufItemBuilder::Type(ProtobufTypeBuilder::Message(
-                MessageBuilder::parse(pair)?,
-            )),
-            Rule::enum_ => {
-                ProtobufItemBuilder::Type(ProtobufTypeBuilder::Enum(EnumBuilder::parse(pair)?))
+        match pair.as_rule() {
+            Rule::message => {
+                ProtobufItemBuilder::Type(ProtobufTypeBuilder::Message(MessageBuilder::parse(pair)))
             }
-            Rule::service => ProtobufItemBuilder::Service(ServiceBuilder::parse(pair)?),
+            Rule::enum_ => {
+                ProtobufItemBuilder::Type(ProtobufTypeBuilder::Enum(EnumBuilder::parse(pair)))
+            }
+            Rule::service => ProtobufItemBuilder::Service(ServiceBuilder::parse(pair)),
             r => unreachable!("{:?}: {:?}", r, pair),
-        })
+        }
     }
 }
 
 impl MessageBuilder
 {
-    pub fn parse(p: Pair<Rule>) -> Result<Self>
+    pub fn parse(p: Pair<Rule>) -> Self
     {
         let mut inner = p.into_inner();
         let name = inner.next().unwrap().as_str().to_string();
@@ -94,13 +94,13 @@ impl MessageBuilder
         let body = inner.next().unwrap();
         for p in body.into_inner() {
             match p.as_rule() {
-                Rule::field => fields.push(FieldBuilder::parse(p)?),
-                Rule::enum_ => inner_types.push(InnerTypeBuilder::Enum(EnumBuilder::parse(p)?)),
+                Rule::field => fields.push(FieldBuilder::parse(p)),
+                Rule::enum_ => inner_types.push(InnerTypeBuilder::Enum(EnumBuilder::parse(p))),
                 Rule::message => {
-                    inner_types.push(InnerTypeBuilder::Message(MessageBuilder::parse(p)?))
+                    inner_types.push(InnerTypeBuilder::Message(MessageBuilder::parse(p)))
                 }
-                Rule::option => options.push(ProtoOption::parse(p)?),
-                Rule::oneof => oneofs.push(OneofBuilder::parse(p)?),
+                Rule::option => options.push(ProtoOption::parse(p)),
+                Rule::oneof => oneofs.push(OneofBuilder::parse(p)),
                 Rule::mapField => unimplemented!("Maps are not supported"),
                 Rule::reserved => {} // We don't need to care about reserved field numbers.
                 Rule::emptyStatement => {}
@@ -108,19 +108,19 @@ impl MessageBuilder
             }
         }
 
-        Ok(MessageBuilder {
+        MessageBuilder {
             name,
             fields,
             oneofs,
             inner_types,
             options,
-        })
+        }
     }
 }
 
 impl EnumBuilder
 {
-    fn parse(p: Pair<Rule>) -> Result<EnumBuilder>
+    fn parse(p: Pair<Rule>) -> EnumBuilder
     {
         let mut inner = p.into_inner();
         let name = inner.next().unwrap().as_str().to_string();
@@ -134,27 +134,27 @@ impl EnumBuilder
                     let mut inner = p.into_inner();
                     fields.push(EnumField {
                         name: inner.next().unwrap().as_str().to_string(),
-                        value: parse_int_literal(inner.next().unwrap())?,
-                        options: ProtoOption::parse_options(inner)?,
+                        value: parse_int_literal(inner.next().unwrap()),
+                        options: ProtoOption::parse_options(inner),
                     })
                 }
-                Rule::option => options.push(ProtoOption::parse(p)?),
+                Rule::option => options.push(ProtoOption::parse(p)),
                 Rule::emptyStatement => {}
                 r => unreachable!("{:?}: {:?}", r, p),
             }
         }
 
-        Ok(EnumBuilder {
+        EnumBuilder {
             name,
             fields,
             options,
-        })
+        }
     }
 }
 
 impl ServiceBuilder
 {
-    pub fn parse(p: Pair<Rule>) -> Result<Self>
+    pub fn parse(p: Pair<Rule>) -> Self
     {
         let mut inner = p.into_inner();
         let name = inner.next().unwrap();
@@ -162,70 +162,70 @@ impl ServiceBuilder
         let mut options = vec![];
         for p in inner {
             match p.as_rule() {
-                Rule::option => options.push(ProtoOption::parse(p)?),
-                Rule::rpc => rpcs.push(RpcBuilder::parse(p)?),
+                Rule::option => options.push(ProtoOption::parse(p)),
+                Rule::rpc => rpcs.push(RpcBuilder::parse(p)),
                 Rule::emptyStatement => {}
                 r => unreachable!("{:?}: {:?}", r, p),
             }
         }
 
-        Ok(ServiceBuilder {
+        ServiceBuilder {
             name: name.as_str().to_string(),
             rpcs,
             options,
-        })
+        }
     }
 }
 
 impl FieldBuilder
 {
-    pub fn parse(p: Pair<Rule>) -> Result<Self>
+    pub fn parse(p: Pair<Rule>) -> Self
     {
         let mut inner = p.into_inner();
         let repeated = inner.next().unwrap().into_inner().next().is_some();
         let field_type = parse_field_type(inner.next().unwrap().as_str());
         let name = inner.next().unwrap().as_str().to_string();
-        let number = parse_uint_literal(inner.next().unwrap())?;
+        let number = parse_uint_literal(inner.next().unwrap());
 
         let options = match inner.next() {
-            Some(p) => ProtoOption::parse_options(p.into_inner())?,
+            Some(p) => ProtoOption::parse_options(p.into_inner()),
             None => vec![],
         };
 
-        Ok(FieldBuilder {
+        FieldBuilder {
             repeated,
             field_type,
             name,
             number,
             options,
-        })
+        }
     }
 
-    pub fn parse_oneof(p: Pair<Rule>) -> Result<Self>
+    pub fn parse_oneof(p: Pair<Rule>) -> Self
     {
         let mut inner = p.into_inner();
         let field_type = parse_field_type(inner.next().unwrap().as_str());
         let name = inner.next().unwrap().as_str().to_string();
-        let number = parse_uint_literal(inner.next().unwrap())?;
+        let number = parse_uint_literal(inner.next().unwrap());
 
         let options = match inner.next() {
-            Some(p) => ProtoOption::parse_options(p.into_inner())?,
+            Some(p) => ProtoOption::parse_options(p.into_inner()),
             None => vec![],
         };
 
-        Ok(FieldBuilder {
+        FieldBuilder {
             repeated: false,
             field_type,
             name,
             number,
             options,
-        })
+        }
     }
 }
 
 impl OneofBuilder
 {
-    pub fn parse(p: Pair<Rule>) -> Result<Self>
+    pub fn parse(p: Pair<Rule>) -> Self
     {
         let mut inner = p.into_inner();
         let name = inner.next().unwrap().as_str().to_string();
@@ -233,42 +233,19 @@ impl OneofBuilder
         let mut fields = vec![];
         for p in inner {
             match p.as_rule() {
-                Rule::option => options.push(ProtoOption::parse(p)?),
-                Rule::oneofField => fields.push(FieldBuilder::parse_oneof(p)?),
+                Rule::option => options.push(ProtoOption::parse(p)),
+                Rule::oneofField => fields.push(FieldBuilder::parse_oneof(p)),
                 Rule::emptyStatement => {}
                 r => unreachable!("{:?}: {:?}", r, p),
             }
         }
-        Ok(OneofBuilder {
+        OneofBuilder {
             name,
             fields,
             options,
-        })
+        }
     }
 }
-
-/*
-pub fn parse_oneof_field(p: Pair<Rule>, oneof_idx: usize) -> Result<MessageField>
-{
-    let mut inner = p.into_inner();
-    let field_type = parse_field_type(inner.next().unwrap().as_str());
-    let name = inner.next().unwrap().as_str().to_string();
-    let number = parse_uint_literal(inner.next().unwrap())?;
-    let options = match inner.next() {
-        Some(opt) => parse_options(opt)?,
-        None => vec![],
-    };
-
-    Ok(MessageField {
-        repeated: false,
-        field_type,
-        name,
-        number,
-        options,
-        oneof: Some(oneof_idx),
-    })
-}
-*/
 
 fn parse_field_type(t: &str) -> FieldTypeBuilder
 {
@@ -294,63 +271,63 @@ fn parse_field_type(t: &str) -> FieldTypeBuilder
 
 impl RpcBuilder
 {
-    pub fn parse(p: Pair<Rule>) -> Result<Self>
+    pub fn parse(p: Pair<Rule>) -> Self
     {
         let mut inner = p.into_inner();
         let name = inner.next().unwrap();
 
-        let input = RpcArgBuilder::parse(inner.next().unwrap())?;
-        let output = RpcArgBuilder::parse(inner.next().unwrap())?;
+        let input = RpcArgBuilder::parse(inner.next().unwrap());
+        let output = RpcArgBuilder::parse(inner.next().unwrap());
 
         let mut options = vec![];
         for p in inner {
             match p.as_rule() {
-                Rule::option => options.push(ProtoOption::parse(p)?),
+                Rule::option => options.push(ProtoOption::parse(p)),
                 Rule::emptyStatement => {}
                 r => unreachable!("{:?}: {:?}", r, p),
             }
         }
 
-        Ok(RpcBuilder {
+        RpcBuilder {
             name: name.as_str().to_string(),
             input,
             output,
             options,
-        })
+        }
     }
 }
 
 impl RpcArgBuilder
 {
-    pub fn parse(p: Pair<Rule>) -> Result<Self>
+    pub fn parse(p: Pair<Rule>) -> Self
     {
         let mut inner = p.into_inner();
-        Ok(RpcArgBuilder {
+        RpcArgBuilder {
             stream: inner.next().unwrap().into_inner().next().is_some(),
             message: inner.next().unwrap().as_str().to_string(),
-        })
+        }
     }
 }
 
-pub fn parse_uint_literal(p: Pair<Rule>) -> Result<u64>
+pub fn parse_uint_literal(p: Pair<Rule>) -> u64
 {
     match p.as_rule() {
         Rule::fieldNumber => parse_uint_literal(p.into_inner().next().unwrap()),
         Rule::intLit => {
             let mut inner = p.into_inner();
             let lit = inner.next().unwrap();
-            Ok(match lit.as_rule() {
+            match lit.as_rule() {
                 Rule::decimalLit => u64::from_str_radix(lit.as_str(), 10).unwrap(),
                 Rule::octalLit => u64::from_str_radix(&lit.as_str()[1..], 8).unwrap(),
                 Rule::hexLit => u64::from_str_radix(&lit.as_str()[2..], 16).unwrap(),
                 r => unreachable!("{:?}: {:?}", r, lit),
-            })
+            }
         }
         r => unreachable!("{:?}: {:?}", r, p),
     }
 }
 
-pub fn parse_int_literal(p: Pair<Rule>) -> Result<i64>
+pub fn parse_int_literal(p: Pair<Rule>) -> i64
 {
     match p.as_rule() {
         Rule::intLit => {
@@ -361,37 +338,37 @@ pub fn parse_int_literal(p: Pair<Rule>) -> Result<i64>
                 Rule::sign if sign.as_str() == "+" => (1, inner.next().unwrap()),
                 _ => (1, sign),
             };
-            Ok(match lit.as_rule() {
+            match lit.as_rule() {
                 Rule::decimalLit => sign * i64::from_str_radix(lit.as_str(), 10).unwrap(),
                 Rule::octalLit => sign * i64::from_str_radix(&lit.as_str(), 8).unwrap(),
                 Rule::hexLit => sign * i64::from_str_radix(&lit.as_str()[2..], 16).unwrap(),
                 r => unreachable!("{:?}: {:?}", r, lit),
-            })
+            }
         }
         r => unreachable!("{:?}: {:?}", r, p),
     }
 }
 
-pub fn parse_float_literal(p: Pair<Rule>) -> Result<f64>
+pub fn parse_float_literal(p: Pair<Rule>) -> f64
 {
     match p.as_rule() {
-        Rule::floatLit => Ok(p.as_str().parse::<f64>().unwrap()),
+        Rule::floatLit => p.as_str().parse::<f64>().unwrap(),
         r => unreachable!("{:?}: {:?}", r, p),
     }
 }
 
 impl ProtoOption
 {
-    fn parse(p: Pair<Rule>) -> Result<Self>
+    fn parse(p: Pair<Rule>) -> Self
     {
         let mut inner = p.into_inner();
-        Ok(Self {
+        Self {
             name: parse_ident(inner.next().unwrap()),
-            value: Constant::parse(inner.next().unwrap())?,
-        })
+            value: Constant::parse(inner.next().unwrap()),
+        }
     }
 
-    fn parse_options(pairs: Pairs<Rule>) -> Result<Vec<Self>>
+    fn parse_options(pairs: Pairs<Rule>) -> Vec<Self>
     {
         pairs
             .map(|p| match p.as_rule() {
@@ -406,17 +383,17 @@ impl ProtoOption
 
 impl Constant
 {
-    fn parse(p: Pair<Rule>) -> Result<Self>
+    fn parse(p: Pair<Rule>) -> Self
     {
         let p = p.into_inner().next().unwrap();
-        Ok(match p.as_rule() {
+        match p.as_rule() {
             Rule::fullIdent => Constant::Ident(parse_ident(p)),
-            Rule::intLit => Constant::Integer(parse_int_literal(p)?),
-            Rule::floatLit => Constant::Float(parse_float_literal(p)?),
+            Rule::intLit => Constant::Integer(parse_int_literal(p)),
+            Rule::floatLit => Constant::Float(parse_float_literal(p)),
             Rule::strLit => Constant::String(parse_string_literal(p)),
             Rule::boolLit => Constant::Bool(p.as_str() == "true"),
             r => unreachable!("{:?}: {:?}", r, p),
-        })
+        }
     }
 }
 
