@@ -144,7 +144,7 @@ impl ContextBuilder
         let types_by_name = types
             .iter()
             .enumerate()
-            .map(|(idx, t)| (t.full_name(), idx))
+            .map(|(idx, t)| (t.full_name().to_string(), idx))
             .collect();
         let services_by_name = services
             .iter()
@@ -155,8 +155,10 @@ impl ContextBuilder
         let mut packages: Vec<Package> = self
             .packages
             .into_iter()
-            .map(|p| Package {
+            .enumerate()
+            .map(|(idx, p)| Package {
                 name: p.name,
+                self_ref: PackageRef(InternalRef(idx)),
                 types: Vec::new(),
                 services: Vec::new(),
             })
@@ -167,26 +169,19 @@ impl ContextBuilder
             p.services.push(s.self_ref.0.0);
         }
 
-        let mut add_child_types = Vec::new();
         for t in &types {
-            let (self_ref, raw_self_ref, parent) = match t {
-                TypeInfo::Message(m) => (InnerType::Message(m.self_ref), TypeRef::Message(m.self_ref), &m.parent),
-                TypeInfo::Enum(e) => (InnerType::Enum(e.self_ref), TypeRef::Enum(e.self_ref), &e.parent),
+            let (raw_self_ref, parent) = match t {
+                TypeInfo::Message(m) => (TypeRef::Message(m.self_ref), &m.parent),
+                TypeInfo::Enum(e) => (TypeRef::Enum(e.self_ref), &e.parent),
             };
             match parent {
                 TypeParent::Package(p_ref) => {
                     let p = &mut packages[p_ref.0.0];
                     p.types.push(raw_self_ref);
                 }
-                TypeParent::Message(m_ref) => {
-                    add_child_types.push((*m_ref, self_ref));
+                TypeParent::Message(_) => {
+                    // Messages handle their inner types on their own.
                 }
-            }
-        }
-        for (parent, child) in add_child_types {
-            match &mut types[parent.0.0] {
-                TypeInfo::Message(m) => m.inner_types.push(child),
-                _ => panic!("Inner type on non-message type"),
             }
         }
 
@@ -350,12 +345,12 @@ impl MessageBuilder
             .inner_types
             .iter()
             .map(|inner| match inner {
-                InnerTypeBuilder::Message(m) => InnerType::Message(MessageRef::from(
+                InnerTypeBuilder::Message(m) => TypeRef::Message(MessageRef::from(
                     cache
                         .type_by_full_name(&format!("{}.{}", self_data.full_name, m.name))
                         .expect("Existing type wasn't added to the cache"),
                 )),
-                InnerTypeBuilder::Enum(e) => InnerType::Enum(EnumRef::from(
+                InnerTypeBuilder::Enum(e) => TypeRef::Enum(EnumRef::from(
                     cache
                         .type_by_full_name(&format!("{}.{}", self_data.full_name, e.name))
                         .expect("Existing type wasn't added to the cache"),
@@ -374,14 +369,16 @@ impl MessageBuilder
             .into_iter()
             .enumerate()
             .map(|(idx, oneof)| {
+                let oneof_ref = OneofRef(InternalRef(idx));
                 let mut new_fields: Vec<_> = oneof
                     .fields
                     .into_iter()
-                    .map(|field| field.build(self_data, cache, Some(idx)))
+                    .map(|field| field.build(self_data, cache, Some(oneof_ref)))
                     .collect::<Result<_, _>>()?;
                 fields.append(&mut new_fields);
                 Ok(Oneof {
                     name: oneof.name,
+                    self_ref: oneof_ref,
                     options: oneof.options,
                     fields: vec![],
                 })
@@ -394,7 +391,7 @@ impl MessageBuilder
         for (idx, oneof) in oneofs.iter_mut().enumerate() {
             oneof.fields = fields
                 .iter()
-                .filter_map(|(num, f)| match f.oneof == Some(idx) {
+                .filter_map(|(num, f)| match f.oneof == Some(OneofRef(InternalRef(idx))) {
                     true => Some(*num),
                     false => None,
                 })
@@ -402,15 +399,18 @@ impl MessageBuilder
         }
 
         let parent = cache.parent_type(&self_data.idx_path);
+        let fields_by_name = fields.iter().map(|(i, f)|
+            (f.name.to_string(), *i)).collect();
 
         Ok(MessageInfo {
             name: self.name,
             full_name: self_data.full_name.clone(),
             parent,
             self_ref: MessageRef(InternalRef(self_data.final_idx)),
-            fields,
             inner_types,
             oneofs,
+            fields,
+            fields_by_name,
         })
     }
 }
@@ -438,7 +438,7 @@ impl FieldBuilder
         self,
         self_data: &CacheData,
         cache: &BuildCache,
-        oneof: Option<usize>,
+        oneof: Option<OneofRef>,
     ) -> Result<MessageField, ParseError>
     {
         let multiplicity = resolve_multiplicity(self.repeated, &self.field_type, &self.options);
@@ -571,11 +571,15 @@ impl EnumBuilder
 
     fn build(self, self_data: &CacheData, cache: &BuildCache) -> Result<EnumInfo, ParseError>
     {
-        let fields_by_value = self
+        let fields_by_name = self
             .fields
             .iter()
-            .enumerate()
-            .map(|(idx, f)| (f.value, idx))
+            .map(|f| (f.name.clone(), f.value))
+            .collect();
+        let fields_by_value = self
+            .fields
+            .into_iter()
+            .map(|f| (f.value, f))
             .collect();
 
         let parent = cache.parent_type(&self_data.idx_path);
@@ -585,8 +589,8 @@ impl EnumBuilder
             full_name: self_data.full_name.to_string(),
             self_ref: EnumRef(InternalRef(self_data.final_idx)),
             parent,
-            fields: self.fields,
             fields_by_value,
+            fields_by_name,
         })
     }
 

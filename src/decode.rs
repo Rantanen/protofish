@@ -452,7 +452,7 @@ impl MessageInfo
             let number = tag >> 3;
             let wire_type = (tag & 0x07) as u8;
 
-            let value = match self.fields.get(&number) {
+            let value = match self.get_field(number) {
                 Some(field) => {
                     if field.multiplicity == Multiplicity::RepeatedPacked {
                         if wire_type == 2 {

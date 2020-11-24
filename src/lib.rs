@@ -6,7 +6,8 @@
 //!
 //!
 //! ```
-//! use protofish::{Context, Value, UnknownValue};
+//! use protofish::prelude::*;
+//! use protofish::decode::UnknownValue;
 //! use bytes::Bytes;
 //!
 //! let context = Context::parse(&[r#"
@@ -46,3 +47,4 @@
 
 pub mod context;
 pub mod decode;
+pub mod prelude;

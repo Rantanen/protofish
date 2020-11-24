@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, HashMap};
 
 mod api;
 mod builder;
+mod modify_api;
 mod parse;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -26,6 +27,10 @@ pub struct PackageRef(InternalRef);
 /// A reference to a service.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ServiceRef(InternalRef);
+
+/// A reference to a service.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct OneofRef(InternalRef);
 
 /// Protofish error type.
 #[derive(Debug, Snafu)]
@@ -96,6 +101,36 @@ pub enum InsertError
     },
 }
 
+/// Error modifying a type.
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum MemberInsertError
+{
+    /// A field with the same number already exists.
+    NumberConflict,
+
+    /// A field with the same name already exists.
+    NameConflict,
+
+    /// A field refers to a oneof that does not exist.
+    MissingOneof,
+}
+
+/// Error modifying a type.
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum OneofInsertError
+{
+    /// A oneof with the same name already exists.
+    NameConflict,
+
+    /// The oneof refers to a field that doesn't exist.
+    FieldNotFound
+    {
+        field: u64
+    },
+}
+
 /// Type reference that references either message or enum type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TypeRef
@@ -125,7 +160,7 @@ pub enum ItemType
 ///
 /// Contains type information parsed from the files. Required for decoding
 /// incoming Protobuf messages.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, PartialEq)]
 pub struct Context
 {
     packages: Vec<Package>,
@@ -136,16 +171,24 @@ pub struct Context
 }
 
 /// Package details.
-#[derive(Default, Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Package
 {
+    /// Package name. None for an anonymous package.
     name: Option<String>,
+
+    /// Package self reference.
+    self_ref: PackageRef,
+
+    /// Top level types.
     types: Vec<TypeRef>,
+
+    /// Services.
     services: Vec<usize>,
 }
 
 /// Message or enum type.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum TypeInfo
 {
     /// Message.
@@ -156,7 +199,7 @@ pub enum TypeInfo
 }
 
 /// Message details
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 #[non_exhaustive]
 pub struct MessageInfo
 {
@@ -172,18 +215,19 @@ pub struct MessageInfo
     /// `MessageRef` that references this message.
     pub self_ref: MessageRef,
 
-    /// Message fields.
-    pub fields: BTreeMap<u64, MessageField>,
-
     /// `oneof` structures defined within the message.
     pub oneofs: Vec<Oneof>,
 
     /// References to the inner types defined within this message.
-    pub inner_types: Vec<InnerType>,
+    pub inner_types: Vec<TypeRef>,
+
+    // Using BTreeMap here to ensure ordering.
+    fields: BTreeMap<u64, MessageField>,
+    fields_by_name: BTreeMap<String, u64>,
 }
 
 /// Reference to a type parent.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TypeParent
 {
     /// Reference to a package for top-level types.
@@ -193,19 +237,8 @@ pub enum TypeParent
     Message(MessageRef),
 }
 
-/// Inner type reference.
-#[derive(Debug)]
-pub enum InnerType
-{
-    /// Inner `message`.
-    Message(MessageRef),
-
-    /// Inner `enum`.
-    Enum(EnumRef),
-}
-
 /// Enum details
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 #[non_exhaustive]
 pub struct EnumInfo
 {
@@ -221,14 +254,12 @@ pub struct EnumInfo
     /// `EnumRef` that references this enum.
     pub self_ref: EnumRef,
 
-    /// Enum fields.
-    pub fields: Vec<EnumField>,
-
-    fields_by_value: HashMap<i64, usize>,
+    fields_by_value: BTreeMap<i64, EnumField>,
+    fields_by_name: BTreeMap<String, i64>,
 }
 
 /// Message field details.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 #[non_exhaustive]
 pub struct MessageField
 {
@@ -248,7 +279,7 @@ pub struct MessageField
     pub options: Vec<ProtoOption>,
 
     /// Index to the ´oneof` structure in the parent type if this field is part of a `oneof`.
-    pub oneof: Option<usize>,
+    pub oneof: Option<OneofRef>,
 }
 
 /// Defines the multiplicity of the field values.
@@ -266,12 +297,15 @@ pub enum Multiplicity
 }
 
 /// Message `oneof` details.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 #[non_exhaustive]
 pub struct Oneof
 {
     /// Name of the `oneof` structure.
     pub name: String,
+
+    /// Self reference of the `Oneof` in the owning type.
+    pub self_ref: OneofRef,
 
     /// Field numbers of the fields contained in the `oneof`.
     pub fields: Vec<u64>,

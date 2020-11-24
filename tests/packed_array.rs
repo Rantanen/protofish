@@ -3,8 +3,8 @@ fn repeated()
 {
     use bytes::BufMut;
     use protofish::{
-        decode::{FieldValue, PackedArray},
-        Context, MessageValue, Value,
+        context::Context,
+        decode::{FieldValue, MessageValue, PackedArray, Value},
     };
 
     let context = Context::parse(&[r#"

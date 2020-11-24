@@ -1,7 +1,7 @@
 #[test]
 fn oneof()
 {
-    use protofish::Context;
+    use protofish::context::Context;
 
     // Hey at least we're ensuring this doesn't panic. :<
     Context::parse(&[r#"
