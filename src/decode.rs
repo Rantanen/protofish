@@ -354,7 +354,11 @@ fn return_incomplete(data: &mut &[u8], original: &[u8]) -> Value
 
 fn try_read_8_bytes(data: &mut &[u8]) -> Option<[u8; 8]>
 {
-    match (*data).try_into() {
+    if data.len() < 8 {
+        return None;
+    }
+
+    match (data[..8]).try_into() {
         Ok(v) => {
             *data = &data[8..];
             Some(v)
@@ -365,7 +369,11 @@ fn try_read_8_bytes(data: &mut &[u8]) -> Option<[u8; 8]>
 
 fn try_read_4_bytes(data: &mut &[u8]) -> Option<[u8; 4]>
 {
-    match (*data).try_into() {
+    if data.len() < 4 {
+        return None;
+    }
+
+    match (data[..4]).try_into() {
         Ok(v) => {
             *data = &data[4..];
             Some(v)
