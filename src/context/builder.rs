@@ -109,7 +109,7 @@ pub(crate) struct RpcArgBuilder
 
 impl ContextBuilder
 {
-    pub fn build(mut self) -> Result<Context>
+    pub fn build(mut self) -> Result<Context, ParseError>
     {
         let mut cache = BuildCache::default();
         for (i, p) in self.packages.iter().enumerate() {
@@ -126,8 +126,8 @@ impl ContextBuilder
                     let ty = self.take_type(&cache_data.idx_path);
                     let mut t = ty.build(cache_data, &cache)?;
                     match &mut t {
-                        TypeInfo::Message(m) => m.self_ref = MessageRef(TypeRef(types.len())),
-                        TypeInfo::Enum(e) => e.self_ref = EnumRef(TypeRef(types.len())),
+                        TypeInfo::Message(m) => assert_eq!(m.self_ref.0.0, types.len()),
+                        TypeInfo::Enum(e) => assert_eq!(e.self_ref.0.0, types.len()),
                     }
                     types.push(t);
                 }
@@ -144,7 +144,7 @@ impl ContextBuilder
         let types_by_name = types
             .iter()
             .enumerate()
-            .map(|(idx, t)| (t.full_name(), idx))
+            .map(|(idx, t)| (t.full_name().to_string(), idx))
             .collect();
         let services_by_name = services
             .iter()
@@ -152,8 +152,41 @@ impl ContextBuilder
             .map(|(idx, t)| (t.full_name.clone(), idx))
             .collect();
 
+        let mut packages: Vec<Package> = self
+            .packages
+            .into_iter()
+            .enumerate()
+            .map(|(idx, p)| Package {
+                name: p.name,
+                self_ref: PackageRef(InternalRef(idx)),
+                types: Vec::new(),
+                services: Vec::new(),
+            })
+            .collect();
+
+        for s in &services {
+            let p = &mut packages[s.parent.0.0];
+            p.services.push(s.self_ref.0.0);
+        }
+
+        for t in &types {
+            let (raw_self_ref, parent) = match t {
+                TypeInfo::Message(m) => (TypeRef::Message(m.self_ref), &m.parent),
+                TypeInfo::Enum(e) => (TypeRef::Enum(e.self_ref), &e.parent),
+            };
+            match parent {
+                TypeParent::Package(p_ref) => {
+                    let p = &mut packages[p_ref.0.0];
+                    p.types.push(raw_self_ref);
+                }
+                TypeParent::Message(_) => {
+                    // Messages handle their inner types on their own.
+                }
+            }
+        }
+
         Ok(Context {
-            packages: vec![],
+            packages,
             types,
             types_by_name,
             services,
@@ -174,10 +207,10 @@ impl ContextBuilder
 
 impl PackageBuilder
 {
-    fn populate(&self, cache: &mut BuildCache, idx: &mut Vec<usize>) -> Result<()>
+    fn populate(&self, cache: &mut BuildCache, idx: &mut Vec<usize>) -> Result<(), ParseError>
     {
         let mut path = match &self.name {
-            Some(name) => name.split('.').map(|s| s).collect(),
+            Some(name) => name.split('.').collect(),
             None => vec![],
         };
 
@@ -228,7 +261,7 @@ impl PackageBuilder
 
 impl ProtobufTypeBuilder
 {
-    fn build(self, self_data: &CacheData, cache: &BuildCache) -> Result<TypeInfo>
+    fn build(self, self_data: &CacheData, cache: &BuildCache) -> Result<TypeInfo, ParseError>
     {
         Ok(match self {
             ProtobufTypeBuilder::Message(m) => TypeInfo::Message(m.build(self_data, cache)?),
@@ -247,7 +280,7 @@ impl MessageBuilder
         cache: &mut BuildCache,
         path: &mut Vec<&'a str>,
         idx: &mut Vec<usize>,
-    ) -> Result<()>
+    ) -> Result<(), ParseError>
     {
         path.push(&self.name);
         let full_name = path.join(".");
@@ -256,12 +289,18 @@ impl MessageBuilder
             .items
             .insert(full_name.clone(), (ItemType::Message, cache_idx))
             .is_some()
+            || cache
+                .items_by_idx
+                .insert(idx.clone(), (ItemType::Message, cache_idx))
+                .is_some()
         {
-            return Err(Error::DuplicateType {
+            return Err(ParseError::DuplicateType {
                 name: path.join("."),
             });
         }
 
+        // Make sure to push the current type into the cache before processing the possible
+        // embedded types.
         cache.types.push(CacheData {
             item_type: ItemType::Message,
             full_name,
@@ -300,18 +339,18 @@ impl MessageBuilder
         }
     }
 
-    fn build(self, self_data: &CacheData, cache: &BuildCache) -> Result<MessageInfo>
+    fn build(self, self_data: &CacheData, cache: &BuildCache) -> Result<MessageInfo, ParseError>
     {
         let inner_types: Vec<_> = self
             .inner_types
             .iter()
             .map(|inner| match inner {
-                InnerTypeBuilder::Message(m) => InnerType::Message(MessageRef::from(
+                InnerTypeBuilder::Message(m) => TypeRef::Message(MessageRef::from(
                     cache
                         .type_by_full_name(&format!("{}.{}", self_data.full_name, m.name))
                         .expect("Existing type wasn't added to the cache"),
                 )),
-                InnerTypeBuilder::Enum(e) => InnerType::Enum(EnumRef::from(
+                InnerTypeBuilder::Enum(e) => TypeRef::Enum(EnumRef::from(
                     cache
                         .type_by_full_name(&format!("{}.{}", self_data.full_name, e.name))
                         .expect("Existing type wasn't added to the cache"),
@@ -330,14 +369,16 @@ impl MessageBuilder
             .into_iter()
             .enumerate()
             .map(|(idx, oneof)| {
+                let oneof_ref = OneofRef(InternalRef(idx));
                 let mut new_fields: Vec<_> = oneof
                     .fields
                     .into_iter()
-                    .map(|field| field.build(self_data, cache, Some(idx)))
+                    .map(|field| field.build(self_data, cache, Some(oneof_ref)))
                     .collect::<Result<_, _>>()?;
                 fields.append(&mut new_fields);
                 Ok(Oneof {
                     name: oneof.name,
+                    self_ref: oneof_ref,
                     options: oneof.options,
                     fields: vec![],
                 })
@@ -350,20 +391,26 @@ impl MessageBuilder
         for (idx, oneof) in oneofs.iter_mut().enumerate() {
             oneof.fields = fields
                 .iter()
-                .filter_map(|(num, f)| match f.oneof == Some(idx) {
+                .filter_map(|(num, f)| match f.oneof == Some(OneofRef(InternalRef(idx))) {
                     true => Some(*num),
                     false => None,
                 })
                 .collect();
         }
 
+        let parent = cache.parent_type(&self_data.idx_path);
+        let fields_by_name = fields.iter().map(|(i, f)|
+            (f.name.to_string(), *i)).collect();
+
         Ok(MessageInfo {
             name: self.name,
             full_name: self_data.full_name.clone(),
-            self_ref: MessageRef(TypeRef(0)),
-            fields,
+            parent,
+            self_ref: MessageRef(InternalRef(self_data.final_idx)),
             inner_types,
             oneofs,
+            fields,
+            fields_by_name,
         })
     }
 }
@@ -391,8 +438,8 @@ impl FieldBuilder
         self,
         self_data: &CacheData,
         cache: &BuildCache,
-        oneof: Option<usize>,
-    ) -> Result<MessageField>
+        oneof: Option<OneofRef>,
+    ) -> Result<MessageField, ParseError>
     {
         let multiplicity = resolve_multiplicity(self.repeated, &self.field_type, &self.options);
         Ok(MessageField {
@@ -440,21 +487,21 @@ fn resolve_multiplicity(
 
 impl FieldTypeBuilder
 {
-    fn build(self, self_data: &CacheData, cache: &BuildCache) -> Result<ValueType>
+    fn build(self, self_data: &CacheData, cache: &BuildCache) -> Result<ValueType, ParseError>
     {
         Ok(match self {
             FieldTypeBuilder::Builtin(vt) => vt,
             FieldTypeBuilder::Unknown(s) => {
                 let t = cache
                     .resolve_type(&s, &self_data.full_name)
-                    .ok_or_else(|| Error::TypeNotFound {
+                    .ok_or_else(|| ParseError::TypeNotFound {
                         name: s,
                         context: self_data.full_name.to_string(),
                     })?;
 
                 match t.item_type {
-                    ItemType::Message => ValueType::Message(MessageRef(TypeRef(t.final_idx))),
-                    ItemType::Enum => ValueType::Enum(EnumRef(TypeRef(t.final_idx))),
+                    ItemType::Message => ValueType::Message(MessageRef(InternalRef(t.final_idx))),
+                    ItemType::Enum => ValueType::Enum(EnumRef(InternalRef(t.final_idx))),
                     _ => unreachable!("Service as field type"),
                 }
             }
@@ -469,7 +516,7 @@ impl InnerTypeBuilder
         cache: &mut BuildCache,
         path: &mut Vec<&'a str>,
         idx: &mut Vec<usize>,
-    ) -> Result<()>
+    ) -> Result<(), ParseError>
     {
         match self {
             InnerTypeBuilder::Message(m) => m.populate(cache, path, idx),
@@ -496,7 +543,7 @@ impl EnumBuilder
         cache: &mut BuildCache,
         path: &mut Vec<&'a str>,
         idx: &mut Vec<usize>,
-    ) -> Result<()>
+    ) -> Result<(), ParseError>
     {
         path.push(&self.name);
         let full_name = path.join(".");
@@ -506,7 +553,7 @@ impl EnumBuilder
             .insert(full_name.clone(), (ItemType::Enum, cache_idx))
             .is_some()
         {
-            return Err(Error::DuplicateType {
+            return Err(ParseError::DuplicateType {
                 name: path.join("."),
             });
         }
@@ -522,20 +569,28 @@ impl EnumBuilder
         Ok(())
     }
 
-    fn build(self, self_data: &CacheData, _cache: &BuildCache) -> Result<EnumInfo>
+    fn build(self, self_data: &CacheData, cache: &BuildCache) -> Result<EnumInfo, ParseError>
     {
-        let fields_by_value = self
+        let fields_by_name = self
             .fields
             .iter()
-            .enumerate()
-            .map(|(idx, f)| (f.value, idx))
+            .map(|f| (f.name.clone(), f.value))
             .collect();
+        let fields_by_value = self
+            .fields
+            .into_iter()
+            .map(|f| (f.value, f))
+            .collect();
+
+        let parent = cache.parent_type(&self_data.idx_path);
+
         Ok(EnumInfo {
             name: self.name,
             full_name: self_data.full_name.to_string(),
-            self_ref: EnumRef(TypeRef(0)),
-            fields: self.fields,
+            self_ref: EnumRef(InternalRef(self_data.final_idx)),
+            parent,
             fields_by_value,
+            fields_by_name,
         })
     }
 
@@ -559,7 +614,7 @@ impl ServiceBuilder
         cache: &mut BuildCache,
         path: &mut Vec<&'a str>,
         idx: &mut Vec<usize>,
-    ) -> Result<()>
+    ) -> Result<(), ParseError>
     {
         path.push(&self.name);
         let full_name = path.join(".");
@@ -568,7 +623,7 @@ impl ServiceBuilder
             .items
             .insert(full_name.clone(), (ItemType::Service, cache_idx))
         {
-            return Err(Error::DuplicateType {
+            return Err(ParseError::DuplicateType {
                 name: path.join("."),
             });
         }
@@ -584,7 +639,7 @@ impl ServiceBuilder
         Ok(())
     }
 
-    fn build(self, self_data: &CacheData, cache: &BuildCache) -> Result<Service>
+    fn build(self, self_data: &CacheData, cache: &BuildCache) -> Result<Service, ParseError>
     {
         let rpcs: Vec<_> = self
             .rpcs
@@ -597,8 +652,15 @@ impl ServiceBuilder
             .map(|(idx, rpc)| (rpc.name.to_string(), idx))
             .collect();
 
+        let parent = match cache.parent_type(&self_data.idx_path) {
+            TypeParent::Package(p) => p,
+            _ => panic!("Service inside a message"),
+        };
+
         Ok(Service {
             name: self.name,
+            self_ref: ServiceRef(InternalRef(self_data.final_idx)),
+            parent,
             full_name: self_data.full_name.clone(),
             rpcs,
             rpcs_by_name,
@@ -609,7 +671,7 @@ impl ServiceBuilder
 
 impl RpcBuilder
 {
-    fn build(self, self_data: &CacheData, cache: &BuildCache) -> Result<Rpc>
+    fn build(self, self_data: &CacheData, cache: &BuildCache) -> Result<Rpc, ParseError>
     {
         Ok(Rpc {
             name: self.name,
@@ -622,13 +684,13 @@ impl RpcBuilder
 
 impl RpcArgBuilder
 {
-    fn build(self, rpc_data: &CacheData, cache: &BuildCache) -> Result<RpcArg>
+    fn build(self, rpc_data: &CacheData, cache: &BuildCache) -> Result<RpcArg, ParseError>
     {
         // Fetch the type data from the cache so we can figure out the type reference.
         let self_data = match cache.resolve_type(&self.message, &rpc_data.full_name) {
             Some(data) => data,
             None => {
-                return Err(Error::TypeNotFound {
+                return Err(ParseError::TypeNotFound {
                     name: self.message,
                     context: rpc_data.full_name.clone(),
                 })
@@ -637,7 +699,7 @@ impl RpcArgBuilder
 
         // All rpc input/output types must be messages.
         if self_data.item_type != ItemType::Message {
-            return Err(Error::InvalidTypeKind {
+            return Err(ParseError::InvalidTypeKind {
                 type_name: self.message,
                 context: "service input/output",
                 expected: ItemType::Message,
@@ -645,7 +707,7 @@ impl RpcArgBuilder
             });
         }
 
-        let message = MessageRef(TypeRef(self_data.final_idx));
+        let message = MessageRef(InternalRef(self_data.final_idx));
         Ok(RpcArg {
             stream: self.stream,
             message,
@@ -660,7 +722,7 @@ impl MessageRef
         if data.item_type != ItemType::Message {
             panic!("Trying to create MessageRef for {:?}", data.item_type);
         }
-        MessageRef(TypeRef(data.final_idx))
+        MessageRef(InternalRef(data.final_idx))
     }
 }
 
@@ -671,7 +733,7 @@ impl EnumRef
         if data.item_type != ItemType::Enum {
             panic!("Trying to create EnumRef for {:?}", data.item_type);
         }
-        EnumRef(TypeRef(data.final_idx))
+        EnumRef(InternalRef(data.final_idx))
     }
 }
 
@@ -679,6 +741,7 @@ impl EnumRef
 struct BuildCache
 {
     items: BTreeMap<String, (ItemType, usize)>,
+    items_by_idx: BTreeMap<Vec<usize>, (ItemType, usize)>,
     types: Vec<CacheData>,
     services: Vec<CacheData>,
 }
@@ -695,8 +758,8 @@ impl BuildCache
 {
     fn resolve_type(&self, relative_name: &str, mut current_path: &str) -> Option<&CacheData>
     {
-        if relative_name.starts_with('.') {
-            return self.type_by_full_name(&relative_name[1..]);
+        if let Some(absolute) = relative_name.strip_prefix('.') {
+            return self.type_by_full_name(absolute);
         }
 
         loop {
@@ -725,10 +788,29 @@ impl BuildCache
         }
     }
 
+    fn parent_type(&self, current: &[usize]) -> TypeParent
+    {
+        match current.len() {
+            0 | 1 => panic!("Empty type ID path"),
+            2 => TypeParent::Package(PackageRef(InternalRef(current[0]))),
+            _ => self
+                .type_by_idx_path(&current[..current.len() - 1])
+                .map(|data| TypeParent::Message(MessageRef(InternalRef(data.final_idx))))
+                .unwrap_or_else(|| panic!("Parent type not found: {:?}", current)),
+        }
+    }
+
     fn type_by_full_name(&self, full_name: &str) -> Option<&CacheData>
     {
         self.items
             .get(full_name)
+            .and_then(|(ty, i)| self.type_by_idx(*ty, *i))
+    }
+
+    fn type_by_idx_path(&self, idx: &[usize]) -> Option<&CacheData>
+    {
+        self.items_by_idx
+            .get(idx)
             .and_then(|(ty, i)| self.type_by_idx(*ty, *i))
     }
 
