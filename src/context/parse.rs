@@ -317,7 +317,7 @@ pub fn parse_uint_literal(p: Pair<Rule>) -> u64
             let mut inner = p.into_inner();
             let lit = inner.next().unwrap();
             match lit.as_rule() {
-                Rule::decimalLit => u64::from_str_radix(lit.as_str(), 10).unwrap(),
+                Rule::decimalLit => str::parse(lit.as_str()).unwrap(),
                 Rule::octalLit => u64::from_str_radix(&lit.as_str()[1..], 8).unwrap(),
                 Rule::hexLit => u64::from_str_radix(&lit.as_str()[2..], 16).unwrap(),
                 r => unreachable!("{:?}: {:?}", r, lit),
@@ -339,7 +339,7 @@ pub fn parse_int_literal(p: Pair<Rule>) -> i64
                 _ => (1, sign),
             };
             match lit.as_rule() {
-                Rule::decimalLit => sign * i64::from_str_radix(lit.as_str(), 10).unwrap(),
+                Rule::decimalLit => sign * str::parse::<i64>(lit.as_str()).unwrap(),
                 Rule::octalLit => sign * i64::from_str_radix(&lit.as_str(), 8).unwrap(),
                 Rule::hexLit => sign * i64::from_str_radix(&lit.as_str()[2..], 16).unwrap(),
                 r => unreachable!("{:?}: {:?}", r, lit),

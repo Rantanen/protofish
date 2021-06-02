@@ -361,19 +361,19 @@ impl Value
         let bytes = match self {
             Value::Double(v) => BytesMut::from(v.to_le_bytes().as_ref()),
             Value::Float(v) => BytesMut::from(v.to_le_bytes().as_ref()),
-            Value::Int32(v) => BytesMut::from(v.to_signed_varint().as_ref()),
-            Value::Int64(v) => BytesMut::from(v.to_signed_varint().as_ref()),
-            Value::UInt32(v) => BytesMut::from(v.to_unsigned_varint().as_ref()),
-            Value::UInt64(v) => BytesMut::from(v.to_unsigned_varint().as_ref()),
+            Value::Int32(v) => BytesMut::from(v.into_signed_varint().as_ref()),
+            Value::Int64(v) => BytesMut::from(v.into_signed_varint().as_ref()),
+            Value::UInt32(v) => BytesMut::from(v.into_unsigned_varint().as_ref()),
+            Value::UInt64(v) => BytesMut::from(v.into_unsigned_varint().as_ref()),
             Value::SInt32(v) => {
                 let sign_bit = if *v < 0 { 1 } else { 0 };
                 let v = *v as u64;
-                (v * 2 + sign_bit).to_unsigned_varint()
+                (v * 2 + sign_bit).into_unsigned_varint()
             }
             Value::SInt64(v) => {
                 let sign_bit = if *v < 0 { 1 } else { 0 };
                 let v = *v as u64;
-                (v * 2 + sign_bit).to_unsigned_varint()
+                (v * 2 + sign_bit).into_unsigned_varint()
             }
             Value::Fixed32(v) => BytesMut::from(v.to_le_bytes().as_ref()),
             Value::Fixed64(v) => BytesMut::from(v.to_le_bytes().as_ref()),
@@ -381,16 +381,16 @@ impl Value
             Value::SFixed64(v) => BytesMut::from(v.to_le_bytes().as_ref()),
             Value::Bool(v) => BytesMut::from(if *v { [1u8].as_ref() } else { [0u8].as_ref() }),
             Value::String(v) => {
-                let mut output = v.len().to_unsigned_varint();
+                let mut output = v.len().into_unsigned_varint();
                 output.extend_from_slice(v.as_bytes());
                 output
             }
             Value::Bytes(v) => {
-                let mut output = v.len().to_unsigned_varint();
+                let mut output = v.len().into_unsigned_varint();
                 output.extend_from_slice(v);
                 output
             }
-            Value::Enum(v) => BytesMut::from(v.value.to_signed_varint().as_ref()),
+            Value::Enum(v) => BytesMut::from(v.value.into_signed_varint().as_ref()),
             Value::Message(v) => v.encode(ctx),
             Value::Packed(p) => p.encode(),
             Value::Unknown(..) => return None,
@@ -451,29 +451,29 @@ impl PackedArray
                 write_packed!(v => |v| BytesMut::from(v.to_le_bytes().as_ref()))
             }
             PackedArray::Int32(v) => {
-                write_packed!(v => |v| BytesMut::from(v.to_signed_varint().as_ref()))
+                write_packed!(v => |v| BytesMut::from(v.into_signed_varint().as_ref()))
             }
             PackedArray::Int64(v) => {
-                write_packed!(v => |v| BytesMut::from(v.to_signed_varint().as_ref()))
+                write_packed!(v => |v| BytesMut::from(v.into_signed_varint().as_ref()))
             }
             PackedArray::UInt32(v) => {
-                write_packed!(v => |v| BytesMut::from(v.to_unsigned_varint().as_ref()))
+                write_packed!(v => |v| BytesMut::from(v.into_unsigned_varint().as_ref()))
             }
             PackedArray::UInt64(v) => {
-                write_packed!(v => |v| BytesMut::from(v.to_unsigned_varint().as_ref()))
+                write_packed!(v => |v| BytesMut::from(v.into_unsigned_varint().as_ref()))
             }
             PackedArray::SInt32(v) => {
                 write_packed! { v => |v| {
                     let sign_bit = if *v < 0 { 1 } else { 0 };
                     let v = *v as u64;
-                    (v * 2 + sign_bit).to_unsigned_varint()
+                    (v * 2 + sign_bit).into_unsigned_varint()
                 } }
             }
             PackedArray::SInt64(v) => {
                 write_packed! { v => |v| {
                     let sign_bit = if *v < 0 { 1 } else { 0 };
                     let v = *v as u64;
-                    (v * 2 + sign_bit).to_unsigned_varint()
+                    (v * 2 + sign_bit).into_unsigned_varint()
                 } }
             }
             PackedArray::Fixed32(v) => {
@@ -493,7 +493,7 @@ impl PackedArray
             }
         };
 
-        let mut output = data.len().to_unsigned_varint();
+        let mut output = data.len().into_unsigned_varint();
         output.extend_from_slice(data.as_ref());
         output
     }
@@ -626,7 +626,7 @@ impl MessageValue
             .filter_map(|f| f.value.encode(ctx).map(|(w, b)| (f, w, b)))
             .map(|(field, wire_type, bytes)| {
                 let tag = wire_type as u64 + (field.number << 3);
-                let mut field_data = tag.to_unsigned_varint();
+                let mut field_data = tag.into_unsigned_varint();
                 field_data.extend_from_slice(&bytes);
                 field_data
             })
@@ -642,7 +642,7 @@ trait FromUnsignedVarint: Sized
 
 trait ToUnsignedVarint: Sized
 {
-    fn to_unsigned_varint(self) -> BytesMut;
+    fn into_unsigned_varint(self) -> BytesMut;
 }
 
 impl<T: Default + TryFrom<u64>> FromUnsignedVarint for T
@@ -678,7 +678,7 @@ impl<T: Default + TryInto<u64>> ToUnsignedVarint for T
 where
     T::Error: Debug,
 {
-    fn to_unsigned_varint(self) -> BytesMut
+    fn into_unsigned_varint(self) -> BytesMut
     {
         let mut value: u64 = self.try_into().unwrap();
         let mut data: Vec<u8> = Vec::with_capacity(8);
@@ -703,7 +703,7 @@ trait FromSignedVarint: Sized
 
 trait ToSignedVarint: Sized
 {
-    fn to_signed_varint(self) -> BytesMut;
+    fn into_signed_varint(self) -> BytesMut;
 }
 
 impl<T: Default + TryFrom<i64>> FromSignedVarint for T
@@ -723,9 +723,9 @@ impl<T: Default + TryInto<i64>> ToSignedVarint for T
 where
     T::Error: Debug,
 {
-    fn to_signed_varint(self) -> BytesMut
+    fn into_signed_varint(self) -> BytesMut
     {
         let v: u64 = unsafe { std::mem::transmute(self.try_into().unwrap()) };
-        v.to_unsigned_varint()
+        v.into_unsigned_varint()
     }
 }

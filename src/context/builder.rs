@@ -210,7 +210,7 @@ impl PackageBuilder
     fn populate(&self, cache: &mut BuildCache, idx: &mut Vec<usize>) -> Result<(), ParseError>
     {
         let mut path = match &self.name {
-            Some(name) => name.split('.').map(|s| s).collect(),
+            Some(name) => name.split('.').collect(),
             None => vec![],
         };
 
@@ -758,8 +758,8 @@ impl BuildCache
 {
     fn resolve_type(&self, relative_name: &str, mut current_path: &str) -> Option<&CacheData>
     {
-        if relative_name.starts_with('.') {
-            return self.type_by_full_name(&relative_name[1..]);
+        if let Some(absolute) = relative_name.strip_prefix('.') {
+            return self.type_by_full_name(absolute);
         }
 
         loop {
@@ -796,7 +796,7 @@ impl BuildCache
             _ => self
                 .type_by_idx_path(&current[..current.len() - 1])
                 .map(|data| TypeParent::Message(MessageRef(InternalRef(data.final_idx))))
-                .expect(&format!("Parent type not found: {:?}", current)),
+                .unwrap_or_else(|| panic!("Parent type not found: {:?}", current)),
         }
     }
 
