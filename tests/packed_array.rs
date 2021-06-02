@@ -67,4 +67,7 @@ fn repeated()
             ]
         }
     );
+
+    let encoded = value.encode(&context);
+    assert_eq!(payload, encoded);
 }

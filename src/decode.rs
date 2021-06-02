@@ -4,9 +4,18 @@
 //! message or message reference. See the example in the [crate root](crate).
 
 use crate::context::*;
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use std::convert::{TryFrom, TryInto};
 use std::fmt::Debug;
+
+impl Context
+{
+    /// Decode a message.
+    pub fn decode(&self, msg: MessageRef, data: &[u8]) -> MessageValue
+    {
+        self.resolve_message(msg).decode(data, self)
+    }
+}
 
 /// Decoded protocol buffer value.
 #[derive(Debug, PartialEq, Clone)]
@@ -53,7 +62,7 @@ pub enum Value
     Enum(EnumValue),
 
     /// Value which was incomplete due to missing bytes in the payload.
-    Incomplete(Bytes),
+    Incomplete(u8, Bytes),
 
     /// Value which wasn't defined in the context.
     ///
@@ -117,7 +126,7 @@ pub enum UnknownValue
     /// stream as it is imposible to tell how large such invalid value is.
     ///
     /// The decoding will continue after the current variable length value.
-    Invalid(Bytes),
+    Invalid(u8, Bytes),
 }
 
 /// Enum value.
@@ -161,7 +170,7 @@ pub struct FieldValue
 
 impl Value
 {
-    fn decode(data: &mut &[u8], vt: &ValueType, ctx: &Context) -> Self
+    fn decode(data: &mut &[u8], vt_raw: u8, vt: &ValueType, ctx: &Context) -> Self
     {
         let original = *data;
         let opt = match vt {
@@ -212,28 +221,30 @@ impl Value
                 let (consumed, remainder) = data.split_at(length);
                 *data = remainder;
 
-                Some(Value::Message(Box::new(mref.decode(consumed, ctx))))
+                Some(Value::Message(Box::new(
+                    ctx.resolve_message(*mref).decode(consumed, ctx),
+                )))
             }),
         };
 
         opt.unwrap_or_else(|| {
             *data = &[];
-            Value::Incomplete(Bytes::copy_from_slice(original))
+            Value::Incomplete(vt_raw, Bytes::copy_from_slice(original))
         })
     }
 
-    fn decode_packed(data: &mut &[u8], vt: &ValueType) -> Self
+    fn decode_packed(data: &mut &[u8], vt_raw: u8, vt: &ValueType) -> Self
     {
         let original = *data;
         let length = match usize::from_unsigned_varint(data) {
             Some(len) => len,
             None => {
-                return return_incomplete(data, original);
+                return return_incomplete(data, vt_raw, original);
             }
         };
 
         if data.len() < length {
-            return return_incomplete(data, original);
+            return return_incomplete(data, vt_raw, original);
         }
 
         let mut array = &data[..length];
@@ -254,7 +265,7 @@ impl Value
 
                     match $try_read {
                         Some($val) => output.push($insert),
-                        None => return return_incomplete(&mut array, original),
+                        None => return return_incomplete(&mut array, vt_raw, original),
                     }
                 }
             };
@@ -336,20 +347,162 @@ impl Value
                 _ => {
                     let bytes = Bytes::copy_from_slice(data);
                     *data = &[];
-                    Some(UnknownValue::Invalid(bytes))
+                    Some(UnknownValue::Invalid(vt, bytes))
                 }
             };
 
         value
             .map(Value::Unknown)
-            .unwrap_or_else(|| Value::Incomplete(Bytes::copy_from_slice(data)))
+            .unwrap_or_else(|| Value::Incomplete(vt, Bytes::copy_from_slice(data)))
+    }
+
+    fn encode(&self, ctx: &Context) -> Option<(u8, BytesMut)>
+    {
+        let bytes = match self {
+            Value::Double(v) => BytesMut::from(v.to_le_bytes().as_ref()),
+            Value::Float(v) => BytesMut::from(v.to_le_bytes().as_ref()),
+            Value::Int32(v) => BytesMut::from(v.to_signed_varint().as_ref()),
+            Value::Int64(v) => BytesMut::from(v.to_signed_varint().as_ref()),
+            Value::UInt32(v) => BytesMut::from(v.to_unsigned_varint().as_ref()),
+            Value::UInt64(v) => BytesMut::from(v.to_unsigned_varint().as_ref()),
+            Value::SInt32(v) => {
+                let sign_bit = if *v < 0 { 1 } else { 0 };
+                let v = *v as u64;
+                (v * 2 + sign_bit).to_unsigned_varint()
+            }
+            Value::SInt64(v) => {
+                let sign_bit = if *v < 0 { 1 } else { 0 };
+                let v = *v as u64;
+                (v * 2 + sign_bit).to_unsigned_varint()
+            }
+            Value::Fixed32(v) => BytesMut::from(v.to_le_bytes().as_ref()),
+            Value::Fixed64(v) => BytesMut::from(v.to_le_bytes().as_ref()),
+            Value::SFixed32(v) => BytesMut::from(v.to_le_bytes().as_ref()),
+            Value::SFixed64(v) => BytesMut::from(v.to_le_bytes().as_ref()),
+            Value::Bool(v) => BytesMut::from(if *v { [1u8].as_ref() } else { [0u8].as_ref() }),
+            Value::String(v) => {
+                let mut output = v.len().to_unsigned_varint();
+                output.extend_from_slice(v.as_bytes());
+                output
+            }
+            Value::Bytes(v) => {
+                let mut output = v.len().to_unsigned_varint();
+                output.extend_from_slice(v);
+                output
+            }
+            Value::Enum(v) => BytesMut::from(v.value.to_signed_varint().as_ref()),
+            Value::Message(v) => v.encode(ctx),
+            Value::Packed(p) => p.encode(),
+            Value::Unknown(..) => return None,
+            Value::Incomplete(_, bytes) => BytesMut::from(bytes.as_ref()),
+        };
+
+        Some((self.wire_type(), bytes))
+    }
+
+    fn wire_type(&self) -> u8
+    {
+        match self {
+            Value::Double(..) => 1,
+            Value::Float(..) => 5,
+            Value::Int32(..) => 0,
+            Value::Int64(..) => 0,
+            Value::UInt32(..) => 0,
+            Value::UInt64(..) => 0,
+            Value::SInt32(..) => 0,
+            Value::SInt64(..) => 0,
+            Value::Fixed32(..) => 5,
+            Value::Fixed64(..) => 1,
+            Value::SFixed32(..) => 5,
+            Value::SFixed64(..) => 1,
+            Value::Bool(..) => 0,
+            Value::String(..) => 2,
+            Value::Bytes(..) => 2,
+            Value::Message(..) => 2,
+            Value::Enum(..) => 0,
+            Value::Packed(..) => 2,
+            Value::Unknown(unk) => match unk {
+                UnknownValue::Varint(..) => 0,
+                UnknownValue::Fixed64(..) => 1,
+                UnknownValue::VariableLength(..) => 2,
+                UnknownValue::Fixed32(..) => 5,
+                UnknownValue::Invalid(vt, ..) => *vt,
+            },
+            Value::Incomplete(vt, ..) => *vt,
+        }
     }
 }
 
-fn return_incomplete(data: &mut &[u8], original: &[u8]) -> Value
+impl PackedArray
+{
+    fn encode(&self) -> BytesMut
+    {
+        macro_rules! write_packed {
+            ($value:ident => $convert:expr ) => {
+                $value.iter().map($convert).flatten().collect()
+            };
+        }
+
+        let data: Bytes = match self {
+            PackedArray::Double(v) => {
+                write_packed!(v => |v| BytesMut::from(v.to_le_bytes().as_ref()))
+            }
+            PackedArray::Float(v) => {
+                write_packed!(v => |v| BytesMut::from(v.to_le_bytes().as_ref()))
+            }
+            PackedArray::Int32(v) => {
+                write_packed!(v => |v| BytesMut::from(v.to_signed_varint().as_ref()))
+            }
+            PackedArray::Int64(v) => {
+                write_packed!(v => |v| BytesMut::from(v.to_signed_varint().as_ref()))
+            }
+            PackedArray::UInt32(v) => {
+                write_packed!(v => |v| BytesMut::from(v.to_unsigned_varint().as_ref()))
+            }
+            PackedArray::UInt64(v) => {
+                write_packed!(v => |v| BytesMut::from(v.to_unsigned_varint().as_ref()))
+            }
+            PackedArray::SInt32(v) => {
+                write_packed! { v => |v| {
+                    let sign_bit = if *v < 0 { 1 } else { 0 };
+                    let v = *v as u64;
+                    (v * 2 + sign_bit).to_unsigned_varint()
+                } }
+            }
+            PackedArray::SInt64(v) => {
+                write_packed! { v => |v| {
+                    let sign_bit = if *v < 0 { 1 } else { 0 };
+                    let v = *v as u64;
+                    (v * 2 + sign_bit).to_unsigned_varint()
+                } }
+            }
+            PackedArray::Fixed32(v) => {
+                write_packed!( v => |v| BytesMut::from(v.to_le_bytes().as_ref()) )
+            }
+            PackedArray::Fixed64(v) => {
+                write_packed!( v => |v| BytesMut::from(v.to_le_bytes().as_ref()) )
+            }
+            PackedArray::SFixed32(v) => {
+                write_packed!( v => |v| BytesMut::from(v.to_le_bytes().as_ref()) )
+            }
+            PackedArray::SFixed64(v) => {
+                write_packed!( v => |v| BytesMut::from(v.to_le_bytes().as_ref()) )
+            }
+            PackedArray::Bool(v) => {
+                write_packed!( v => |v| BytesMut::from(if *v { [1u8].as_ref() } else { [0u8].as_ref() }))
+            }
+        };
+
+        let mut output = data.len().to_unsigned_varint();
+        output.extend_from_slice(data.as_ref());
+        output
+    }
+}
+
+fn return_incomplete(data: &mut &[u8], vt: u8, original: &[u8]) -> Value
 {
     *data = &[];
-    Value::Incomplete(Bytes::copy_from_slice(original))
+    Value::Incomplete(vt, Bytes::copy_from_slice(original))
 }
 
 fn try_read_8_bytes(data: &mut &[u8]) -> Option<[u8; 8]>
@@ -408,19 +561,6 @@ fn read_bytes(data: &mut &[u8]) -> Option<Bytes>
     Some(Bytes::copy_from_slice(str_data))
 }
 
-impl MessageRef
-{
-    /// Decode a message.
-    ///
-    /// Will **panic** if the message defined by the `MessageRef` does not exist in this context.
-    /// Such panic means the `MessageRef` came from a different context. The panic is not
-    /// guaranteed, as a message with an equal `MessageRef` may exist in multiple contexts.
-    pub fn decode(self, data: &[u8], ctx: &Context) -> MessageValue
-    {
-        ctx.resolve_message(self).decode(data, ctx)
-    }
-}
-
 impl MessageInfo
 {
     /// Decode a message.
@@ -456,12 +596,12 @@ impl MessageInfo
                 Some(field) => {
                     if field.multiplicity == Multiplicity::RepeatedPacked {
                         if wire_type == 2 {
-                            Value::decode_packed(&mut data, &field.field_type)
+                            Value::decode_packed(&mut data, wire_type, &field.field_type)
                         } else {
                             Value::decode_unknown(&mut data, wire_type)
                         }
                     } else if field.field_type.wire_type() == wire_type {
-                        Value::decode(&mut data, &field.field_type, ctx)
+                        Value::decode(&mut data, wire_type, &field.field_type, ctx)
                     } else {
                         Value::decode_unknown(&mut data, wire_type)
                     }
@@ -476,9 +616,33 @@ impl MessageInfo
     }
 }
 
+impl MessageValue
+{
+    /// Encodes a message value into protobuf wire format.
+    pub fn encode(&self, ctx: &Context) -> bytes::BytesMut
+    {
+        self.fields
+            .iter()
+            .filter_map(|f| f.value.encode(ctx).map(|(w, b)| (f, w, b)))
+            .map(|(field, wire_type, bytes)| {
+                let tag = wire_type as u64 + (field.number << 3);
+                let mut field_data = tag.to_unsigned_varint();
+                field_data.extend_from_slice(&bytes);
+                field_data
+            })
+            .flatten()
+            .collect()
+    }
+}
+
 trait FromUnsignedVarint: Sized
 {
     fn from_unsigned_varint(data: &mut &[u8]) -> Option<Self>;
+}
+
+trait ToUnsignedVarint: Sized
+{
+    fn to_unsigned_varint(self) -> BytesMut;
 }
 
 impl<T: Default + TryFrom<u64>> FromUnsignedVarint for T
@@ -510,9 +674,36 @@ where
     }
 }
 
+impl<T: Default + TryInto<u64>> ToUnsignedVarint for T
+where
+    T::Error: Debug,
+{
+    fn to_unsigned_varint(self) -> BytesMut
+    {
+        let mut value: u64 = self.try_into().unwrap();
+        let mut data: Vec<u8> = Vec::with_capacity(8);
+        loop {
+            let mut byte = (value & 0x7f) as u8;
+            value >>= 7;
+            if value > 0 {
+                byte |= 0x80;
+                data.push(byte);
+            } else {
+                data.push(byte);
+                break BytesMut::from(data.as_slice());
+            }
+        }
+    }
+}
+
 trait FromSignedVarint: Sized
 {
     fn from_signed_varint(data: &mut &[u8]) -> Option<Self>;
+}
+
+trait ToSignedVarint: Sized
+{
+    fn to_signed_varint(self) -> BytesMut;
 }
 
 impl<T: Default + TryFrom<i64>> FromSignedVarint for T
@@ -521,25 +712,20 @@ where
 {
     fn from_signed_varint(data: &mut &[u8]) -> Option<Self>
     {
-        let mut result = 0i64;
-        let mut idx = 0;
-        loop {
-            if idx >= data.len() {
-                return None;
-            }
+        u64::from_unsigned_varint(data).map(|u| {
+            let signed: i64 = unsafe { std::mem::transmute(u) };
+            signed.try_into().unwrap()
+        })
+    }
+}
 
-            let b = data[idx];
-            let value = i64::from(b & 0x7f);
-            result += value << (idx * 7);
-
-            idx += 1;
-            if b & 0x80 == 0 {
-                break;
-            }
-        }
-
-        let result = T::try_from(result).expect("Out of range");
-        *data = &data[idx..];
-        Some(result)
+impl<T: Default + TryInto<i64>> ToSignedVarint for T
+where
+    T::Error: Debug,
+{
+    fn to_signed_varint(self) -> BytesMut
+    {
+        let v: u64 = unsafe { std::mem::transmute(self.try_into().unwrap()) };
+        v.to_unsigned_varint()
     }
 }

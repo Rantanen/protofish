@@ -24,11 +24,11 @@
 //! let service = context.get_service("Proto.Fish").unwrap();
 //! let rpc = service.rpc_by_name("Swim").unwrap();
 //!
-//! let input = rpc.input.message.decode(b"\x0a\x05Perch", &context);
+//! let input = context.decode(rpc.input.message, b"\x0a\x05Perch");
 //! assert_eq!(input.fields[0].number, 1);
 //! assert_eq!(input.fields[0].value, Value::String(String::from("Perch")));
 //!
-//! let output = rpc.output.message.decode(b"\x08\xa9\x46", &context);
+//! let output = context.decode(rpc.output.message, b"\x08\xa9\x46");
 //! assert_eq!(output.fields[0].number, 1);
 //! assert_eq!(output.fields[0].value, Value::Int32(9001));
 //!
@@ -40,7 +40,7 @@
 //!     Value::Unknown(UnknownValue::VariableLength(Bytes::from_static(b"Unknown"))));
 //! assert_eq!(
 //!     value.fields[1].value,
-//!     Value::Incomplete(Bytes::from_static(b"\x0fAtlantic ")));
+//!     Value::Incomplete(2, Bytes::from_static(b"\x0fAtlantic ")));
 //! ```
 #![warn(missing_docs)]
 #![allow(clippy::match_bool)]

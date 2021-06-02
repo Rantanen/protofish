@@ -213,6 +213,7 @@ impl MessageField
 
 impl Oneof
 {
+    /// Create a new Oneof definition.
     pub fn new(name: String) -> Self {
         Self {
             name,
@@ -238,6 +239,7 @@ impl EnumInfo
         }
     }
 
+    /// Add a field to the enum definition.
     pub fn add_field(&mut self, field: EnumField) -> Result<(), MemberInsertError> {
         use std::collections::btree_map::Entry;
 

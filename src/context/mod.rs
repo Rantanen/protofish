@@ -127,7 +127,8 @@ pub enum OneofInsertError
     /// The oneof refers to a field that doesn't exist.
     FieldNotFound
     {
-        field: u64
+        /// Field number the Oneof referenced.
+        field: u64,
     },
 }
 
