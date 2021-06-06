@@ -396,7 +396,7 @@ impl Value
                 output
             }
             Value::Packed(p) => p.encode(),
-            Value::Unknown(..) => return None,
+            Value::Unknown(u) => u.encode(),
             Value::Incomplete(_, bytes) => BytesMut::from(bytes.as_ref()),
         };
 
@@ -635,6 +635,25 @@ impl MessageValue
             })
             .flatten()
             .collect()
+    }
+}
+
+impl UnknownValue
+{
+    /// Encodes a message value into protobuf wire format.
+    fn encode(&self) -> bytes::BytesMut
+    {
+        match self {
+            UnknownValue::Varint(v) => v.into_unsigned_varint(),
+            UnknownValue::Fixed64(v) => BytesMut::from(v.to_le_bytes().as_ref()),
+            UnknownValue::VariableLength(b) => {
+                let mut output = b.len().into_unsigned_varint();
+                output.extend_from_slice(b);
+                output
+            }
+            UnknownValue::Fixed32(v) => BytesMut::from(v.to_le_bytes().as_ref()),
+            UnknownValue::Invalid(_, v) => BytesMut::from(v.as_ref()),
+        }
     }
 }
 

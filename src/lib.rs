@@ -32,8 +32,9 @@
 //! assert_eq!(output.fields[0].number, 1);
 //! assert_eq!(output.fields[0].value, Value::Int32(9001));
 //!
+//! let bytes = b"\x12\x07Unknown\x0a\x0fAtlantic ";
 //! let request = context.get_message("Proto.Request").unwrap();
-//! let value = request.decode(b"\x12\x07Unknown\x0a\x0fAtlantic ", &context);
+//! let value = request.decode(bytes, &context);
 //! assert_eq!(value.fields[0].number, 2);
 //! assert_eq!(
 //!     value.fields[0].value,
@@ -41,6 +42,9 @@
 //! assert_eq!(
 //!     value.fields[1].value,
 //!     Value::Incomplete(2, Bytes::from_static(b"\x0fAtlantic ")));
+//!
+//! let encoded = value.encode(&context);
+//! assert_eq!(encoded, &bytes[..]);
 //! ```
 #![warn(missing_docs)]
 #![allow(clippy::match_bool)]
