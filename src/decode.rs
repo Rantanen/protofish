@@ -366,13 +366,11 @@ impl Value
             Value::UInt32(v) => BytesMut::from(v.into_unsigned_varint().as_ref()),
             Value::UInt64(v) => BytesMut::from(v.into_unsigned_varint().as_ref()),
             Value::SInt32(v) => {
-                let sign_bit = if *v < 0 { 1 } else { 0 };
-                let v = *v as u64;
+                let (v, sign_bit) = if *v < 0 { (-v, 1) } else { (*v, 0) };
                 (v * 2 + sign_bit).into_unsigned_varint()
             }
             Value::SInt64(v) => {
-                let sign_bit = if *v < 0 { 1 } else { 0 };
-                let v = *v as u64;
+                let (v, sign_bit) = if *v < 0 { (-v, 1) } else { (*v, 0) };
                 (v * 2 + sign_bit).into_unsigned_varint()
             }
             Value::Fixed32(v) => BytesMut::from(v.to_le_bytes().as_ref()),
@@ -391,7 +389,12 @@ impl Value
                 output
             }
             Value::Enum(v) => BytesMut::from(v.value.into_signed_varint().as_ref()),
-            Value::Message(v) => v.encode(ctx),
+            Value::Message(v) => {
+                let data = v.encode(ctx);
+                let mut output = data.len().into_unsigned_varint();
+                output.extend_from_slice(&data);
+                output
+            }
             Value::Packed(p) => p.encode(),
             Value::Unknown(..) => return None,
             Value::Incomplete(_, bytes) => BytesMut::from(bytes.as_ref()),
