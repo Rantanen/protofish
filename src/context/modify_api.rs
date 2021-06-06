@@ -186,7 +186,7 @@ impl MessageInfo
         // Ensure none of the existing fields are part of oneofs.
         for f in &oneof.fields {
             self.fields
-                .get(&f)
+                .get(f)
                 .ok_or(OneofInsertError::FieldNotFound { field: *f })?;
         }
 
@@ -194,7 +194,7 @@ impl MessageInfo
         // No error should be raised anymore to avoid partial changes.
 
         for f in &mut oneof.fields {
-            let f = self.fields.get_mut(&f).expect("Field disappeared");
+            let f = self.fields.get_mut(f).expect("Field disappeared");
             f.oneof = Some(oneof_ref);
         }
 

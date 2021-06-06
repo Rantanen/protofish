@@ -34,7 +34,7 @@ impl PackageBuilder
 {
     pub fn parse_str(input: &str) -> Result<Self, ParseError>
     {
-        let pairs = ProtoParser::parse(Rule::proto, &input)
+        let pairs = ProtoParser::parse(Rule::proto, input)
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
             .context(SyntaxError {})?;
 
@@ -340,7 +340,7 @@ pub fn parse_int_literal(p: Pair<Rule>) -> i64
             };
             match lit.as_rule() {
                 Rule::decimalLit => sign * str::parse::<i64>(lit.as_str()).unwrap(),
-                Rule::octalLit => sign * i64::from_str_radix(&lit.as_str(), 8).unwrap(),
+                Rule::octalLit => sign * i64::from_str_radix(lit.as_str(), 8).unwrap(),
                 Rule::hexLit => sign * i64::from_str_radix(&lit.as_str()[2..], 16).unwrap(),
                 r => unreachable!("{:?}: {:?}", r, lit),
             }
