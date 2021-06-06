@@ -26,16 +26,16 @@ jobs:
           protofish_version=${ref_no_tag#refs/heads/release-test-}
 
           echo "Final: $protofish_version"
-          echo "::set-env name=PROTOFISH_VERSION::${protofish_version}"
+          echo "PROTOFISH_VERSION=${protofish_version}" >> $GITHUB_ENV
           echo "Version: ${{ env.PROTOFISH_VERSION }}"
 
 
           if [[ $GITHUB_REF == *"release-test"* ]]; then
             echo "Release test"
-            echo "::set-env name=REAL_RELEASE::false"
+            echo "REAL_RELEASE=false" >> $GITHUB_ENV
           else
             echo "Normal release"
-            echo "::set-env name=REAL_RELEASE::true"
+            echo "REAL_RELEASE=true" >> $GITHUB_ENV
           fi
 
       - name: Version check
