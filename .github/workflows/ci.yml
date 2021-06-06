@@ -1,0 +1,59 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches:
+    - master
+    - ci
+
+jobs:
+
+  test:
+    name: Tests
+    env:
+      RUST_BACKTRACE: 1
+      TERM: xterm
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Install toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+
+      - name: Environment
+        run: |
+          cargo --version
+          rustc --version
+
+      - name: Test
+        run: cargo test
+
+  style:
+    name: Fmt & Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Install toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          profile: minimal
+          override: true
+          components: rustfmt, clippy
+      - name: Environment
+        run: |
+          cargo --version
+          cargo fmt -- --version
+          cargo clippy -- --version
+      - name: Run rustfmt
+        run: |
+          cargo fmt --all -- --check
+      - name: Run clippy
+        run: |
+          cargo clippy --all -- -D warnings
