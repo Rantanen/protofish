@@ -622,6 +622,10 @@ impl MessageInfo
 impl MessageValue
 {
     /// Encodes a message value into protobuf wire format.
+    ///
+    /// Will **panic** if the message defined by the `MessageRef` does not exist in this context.
+    /// Such panic means the `MessageRef` came from a different context. The panic is not
+    /// guaranteed, as a message with an equal `MessageRef` may exist in multiple contexts.
     pub fn encode(&self, ctx: &Context) -> bytes::BytesMut
     {
         self.fields
