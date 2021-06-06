@@ -19,8 +19,9 @@ impl Context
     /// Will **panic** if the package defined by the `PackageRef` does not exist in this context.
     /// Such panic means the `PackageRef` came from a different context. The panic is not
     /// guaranteed, as a message with an equal `MessageRef` may exist in multiple contexts.
-    pub fn resolve_package(&self, package_ref: PackageRef) -> &Package {
-        &self.packages[package_ref.0.0]
+    pub fn resolve_package(&self, package_ref: PackageRef) -> &Package
+    {
+        &self.packages[package_ref.0 .0]
     }
 
     /// Gets type info by name.
@@ -113,13 +114,17 @@ impl TypeInfo
 impl MessageInfo
 {
     /// Get a field by its number.
-    pub fn get_field(&self, number: u64) -> Option<&MessageField> {
+    pub fn get_field(&self, number: u64) -> Option<&MessageField>
+    {
         self.fields.get(&number)
     }
 
     /// Get a field by its name.
-    pub fn get_field_by_name(&self, name: &str) -> Option<&MessageField> {
-        self.fields_by_name.get(name).and_then(|id| self.get_field(*id))
+    pub fn get_field_by_name(&self, name: &str) -> Option<&MessageField>
+    {
+        self.fields_by_name
+            .get(name)
+            .and_then(|id| self.get_field(*id))
     }
 }
 

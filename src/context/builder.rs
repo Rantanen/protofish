@@ -126,8 +126,8 @@ impl ContextBuilder
                     let ty = self.take_type(&cache_data.idx_path);
                     let mut t = ty.build(cache_data, &cache)?;
                     match &mut t {
-                        TypeInfo::Message(m) => assert_eq!(m.self_ref.0.0, types.len()),
-                        TypeInfo::Enum(e) => assert_eq!(e.self_ref.0.0, types.len()),
+                        TypeInfo::Message(m) => assert_eq!(m.self_ref.0 .0, types.len()),
+                        TypeInfo::Enum(e) => assert_eq!(e.self_ref.0 .0, types.len()),
                     }
                     types.push(t);
                 }
@@ -165,8 +165,8 @@ impl ContextBuilder
             .collect();
 
         for s in &services {
-            let p = &mut packages[s.parent.0.0];
-            p.services.push(s.self_ref.0.0);
+            let p = &mut packages[s.parent.0 .0];
+            p.services.push(s.self_ref.0 .0);
         }
 
         for t in &types {
@@ -176,7 +176,7 @@ impl ContextBuilder
             };
             match parent {
                 TypeParent::Package(p_ref) => {
-                    let p = &mut packages[p_ref.0.0];
+                    let p = &mut packages[p_ref.0 .0];
                     p.types.push(raw_self_ref);
                 }
                 TypeParent::Message(_) => {
@@ -391,16 +391,20 @@ impl MessageBuilder
         for (idx, oneof) in oneofs.iter_mut().enumerate() {
             oneof.fields = fields
                 .iter()
-                .filter_map(|(num, f)| match f.oneof == Some(OneofRef(InternalRef(idx))) {
-                    true => Some(*num),
-                    false => None,
-                })
+                .filter_map(
+                    |(num, f)| match f.oneof == Some(OneofRef(InternalRef(idx))) {
+                        true => Some(*num),
+                        false => None,
+                    },
+                )
                 .collect();
         }
 
         let parent = cache.parent_type(&self_data.idx_path);
-        let fields_by_name = fields.iter().map(|(i, f)|
-            (f.name.to_string(), *i)).collect();
+        let fields_by_name = fields
+            .iter()
+            .map(|(i, f)| (f.name.to_string(), *i))
+            .collect();
 
         Ok(MessageInfo {
             name: self.name,
@@ -576,11 +580,7 @@ impl EnumBuilder
             .iter()
             .map(|f| (f.name.clone(), f.value))
             .collect();
-        let fields_by_value = self
-            .fields
-            .into_iter()
-            .map(|f| (f.value, f))
-            .collect();
+        let fields_by_value = self.fields.into_iter().map(|f| (f.value, f)).collect();
 
         let parent = cache.parent_type(&self_data.idx_path);
 

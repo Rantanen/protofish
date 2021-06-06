@@ -43,14 +43,14 @@ impl Context
 
         let full_name = match parent {
             TypeParent::Package(p) => {
-                let package = &self.packages[p.0.0];
+                let package = &self.packages[p.0 .0];
                 match &package.name {
                     Some(package_name) => format!("{}.{}", package_name, ty.name()),
                     None => ty.name().to_string(),
                 }
             }
             TypeParent::Message(m) => {
-                let msg = &self.types[m.0.0];
+                let msg = &self.types[m.0 .0];
                 format!("{}.{}", msg.full_name(), ty.name())
             }
         };
@@ -89,11 +89,11 @@ impl Context
         // Add to the parent collection. Either to the package types or message inner types.
         match parent {
             TypeParent::Package(p) => {
-                let package = &mut self.packages[p.0.0];
+                let package = &mut self.packages[p.0 .0];
                 package.types.push(type_ref);
-            },
+            }
             TypeParent::Message(m) => {
-                let ty_info = &mut self.types[m.0.0];
+                let ty_info = &mut self.types[m.0 .0];
                 match ty_info {
                     TypeInfo::Message(msg) => msg.inner_types.push(type_ref),
                     _ => panic!("Inner type for a non-Message"),
@@ -111,8 +111,14 @@ impl Context
 impl Package
 {
     /// Create a new package.
-    pub fn new(name: Option<String>) -> Self {
-        Self { name, self_ref: PackageRef(InternalRef(0)), types: vec![], services: vec![] }
+    pub fn new(name: Option<String>) -> Self
+    {
+        Self {
+            name,
+            self_ref: PackageRef(InternalRef(0)),
+            types: vec![],
+            services: vec![],
+        }
     }
 }
 
@@ -154,8 +160,11 @@ impl MessageInfo
         };
 
         if let Some(oneof_ref) = field.oneof {
-            let oneof = self.oneofs.get_mut(oneof_ref.0.0).ok_or(MemberInsertError::MissingOneof)?;
-                oneof.fields.push(num);
+            let oneof = self
+                .oneofs
+                .get_mut(oneof_ref.0 .0)
+                .ok_or(MemberInsertError::MissingOneof)?;
+            oneof.fields.push(num);
         }
 
         vacant_num.insert(field);
@@ -170,15 +179,15 @@ impl MessageInfo
         let oneof_ref = OneofRef(InternalRef(self.oneofs.len()));
         for o in &self.oneofs {
             if o.name == oneof.name {
-                return Err(OneofInsertError::NameConflict)
+                return Err(OneofInsertError::NameConflict);
             }
         }
 
         // Ensure none of the existing fields are part of oneofs.
         for f in &oneof.fields {
-            self.fields.get(&f).ok_or(OneofInsertError::FieldNotFound {
-                field: *f
-            })?;
+            self.fields
+                .get(&f)
+                .ok_or(OneofInsertError::FieldNotFound { field: *f })?;
         }
 
         // From here on we're making changes to self.
@@ -199,7 +208,8 @@ impl MessageInfo
 impl MessageField
 {
     /// Create a new message field.
-    pub fn new(name: String, number: u64, field_type: ValueType) -> Self {
+    pub fn new(name: String, number: u64, field_type: ValueType) -> Self
+    {
         Self {
             name,
             number,
@@ -214,7 +224,8 @@ impl MessageField
 impl Oneof
 {
     /// Create a new Oneof definition.
-    pub fn new(name: String) -> Self {
+    pub fn new(name: String) -> Self
+    {
         Self {
             name,
             self_ref: OneofRef(InternalRef(0)),
@@ -240,7 +251,8 @@ impl EnumInfo
     }
 
     /// Add a field to the enum definition.
-    pub fn add_field(&mut self, field: EnumField) -> Result<(), MemberInsertError> {
+    pub fn add_field(&mut self, field: EnumField) -> Result<(), MemberInsertError>
+    {
         use std::collections::btree_map::Entry;
 
         let value = field.value;
@@ -263,9 +275,12 @@ impl EnumInfo
 impl EnumField
 {
     /// Create a new enum field.
-    pub fn new(name: String, value: i64) -> Self {
+    pub fn new(name: String, value: i64) -> Self
+    {
         Self {
-            name, value, options: vec![] }
+            name,
+            value,
+            options: vec![],
+        }
     }
 }
-
