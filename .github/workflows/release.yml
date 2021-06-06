@@ -1,0 +1,69 @@
+name: Release
+on:
+  push:
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+*(-.+)?'
+
+jobs:
+
+  # This job is responsible for creating the release _once_ for each tag.
+  create-release:
+    name: Create release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Get release version
+        run: |
+          echo "Ref: $GITHUB_REF"
+          ref_no_tag=${GITHUB_REF#refs/tags/}
+          echo "No tag: $ref_no_tag"
+          protofish_version=${ref_no_tag#refs/heads/release-test-}
+
+          echo "Final: $protofish_version"
+          echo "::set-env name=PROTOFISH_VERSION::${protofish_version}"
+          echo "Version: ${{ env.PROTOFISH_VERSION }}"
+
+
+          if [[ $GITHUB_REF == *"release-test"* ]]; then
+            echo "Release test"
+            echo "::set-env name=REAL_RELEASE::false"
+          else
+            echo "Normal release"
+            echo "::set-env name=REAL_RELEASE::true"
+          fi
+
+      - name: Version check
+        run: |
+          toml_version="$(head Cargo.toml | grep "^version" | sed 's/.*"\(.*\)".*/\1/')"
+          if [ "$toml_version" != "${{ env.PROTOFISH_VERSION }}" ]; then
+            echo "Version mismatch!"
+            echo "Tag:   ${{ env.PROTOFISH_VERSION }}"
+            echo "Crate: $toml_version"
+            exit 1
+          else
+            echo "TOML and Git versions match"
+          fi
+
+      - name: Install toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+
+      - name: Environment
+        run: |
+          cargo --version
+          rustc --version
+
+      - name: Test release
+        run: |
+          cargo test --release
+
+      - name: Publish to crates.io
+        if: env.REAL_RELEASE == 'true'
+        run: |
+          echo cargo publish --token "${{ secrets.crates_io }}"
