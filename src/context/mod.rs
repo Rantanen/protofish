@@ -284,7 +284,7 @@ pub struct MessageField
 }
 
 /// Defines the multiplicity of the field values.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Multiplicity
 {
     /// Field is not repeated.
@@ -295,6 +295,9 @@ pub enum Multiplicity
 
     /// Field is repeated by packing.
     RepeatedPacked,
+
+    /// Field is optional.
+    Optional,
 }
 
 /// Message `oneof` details.

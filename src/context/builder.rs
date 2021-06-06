@@ -69,7 +69,7 @@ pub(crate) struct ServiceBuilder
 #[derive(Debug, PartialEq, Clone)]
 pub(crate) struct FieldBuilder
 {
-    pub(crate) repeated: bool,
+    pub(crate) multiplicity: Multiplicity,
     pub(crate) field_type: FieldTypeBuilder,
     pub(crate) name: String,
     pub(crate) number: u64,
@@ -445,7 +445,7 @@ impl FieldBuilder
         oneof: Option<OneofRef>,
     ) -> Result<MessageField, ParseError>
     {
-        let multiplicity = resolve_multiplicity(self.repeated, &self.field_type, &self.options);
+        let multiplicity = resolve_multiplicity(self.multiplicity, &self.field_type, &self.options);
         Ok(MessageField {
             name: self.name,
             number: self.number,
@@ -458,14 +458,14 @@ impl FieldBuilder
 }
 
 fn resolve_multiplicity(
-    repeated: bool,
+    proto_multiplicity: Multiplicity,
     field_type: &FieldTypeBuilder,
     options: &[ProtoOption],
 ) -> Multiplicity
 {
-    // If this isn't a repeated field, the multiplicity is always Single.
-    if !repeated {
-        return Multiplicity::Single;
+    // If this isn't a repeated field, the multiplicity follows the proto one (single or optional).
+    if proto_multiplicity != Multiplicity::Repeated {
+        return proto_multiplicity;
     }
 
     // Repeated field.
