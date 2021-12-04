@@ -59,9 +59,11 @@ type_ = { "double" | "float" | "int32" | "int64" | "uint32" | "uint64"
     | "bool" | "string" | "bytes" | messageType | enumType }
 fieldNumber = { intLit }
 
+optional = { "optional" }
 repeated = { "repeated" }
-opt_repeated = { repeated? }
-field = { opt_repeated ~ type_ ~ fieldName ~ "=" ~ fieldNumber ~ ( "[" ~ fieldOptions ~ "]" )? ~ ";" }
+one_multiplicity = { repeated | optional }
+multiplicity = { one_multiplicity? }
+field = { multiplicity ~ type_ ~ fieldName ~ "=" ~ fieldNumber ~ ( "[" ~ fieldOptions ~ "]" )? ~ ";" }
 fieldOptions = { fieldOption ~ ( "," ~ fieldOption )* }
 fieldOption = { optionName ~ "=" ~ constant }
 

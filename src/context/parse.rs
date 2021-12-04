@@ -182,7 +182,17 @@ impl FieldBuilder
     pub fn parse(p: Pair<Rule>) -> Self
     {
         let mut inner = p.into_inner();
-        let repeated = inner.next().unwrap().into_inner().next().is_some();
+        let multiplicity = match inner.next().unwrap().into_inner().next() {
+            Some(t) => {
+                let multiplicity = t.into_inner().next().unwrap().as_rule();
+                match multiplicity {
+                    Rule::optional => Multiplicity::Optional,
+                    Rule::repeated => Multiplicity::Repeated,
+                    r => unreachable!("{:?}: {:?}", r, multiplicity),
+                }
+            }
+            None => Multiplicity::Single,
+        };
         let field_type = parse_field_type(inner.next().unwrap().as_str());
         let name = inner.next().unwrap().as_str().to_string();
         let number = parse_uint_literal(inner.next().unwrap());
@@ -193,7 +203,7 @@ impl FieldBuilder
         };
 
         FieldBuilder {
-            repeated,
+            multiplicity,
             field_type,
             name,
             number,
@@ -214,7 +224,7 @@ impl FieldBuilder
         };
 
         FieldBuilder {
-            repeated: false,
+            multiplicity: Multiplicity::Single,
             field_type,
             name,
             number,
@@ -531,7 +541,7 @@ mod test
                     MessageBuilder {
                         name: "MyMessage".to_string(),
                         fields: vec![FieldBuilder {
-                            repeated: false,
+                            multiplicity: Multiplicity::Single,
                             field_type: FieldTypeBuilder::Builtin(ValueType::Int32),
                             name: "value".to_string(),
                             number: 1,
@@ -650,7 +660,7 @@ mod test
                     ProtobufItemBuilder::Type(ProtobufTypeBuilder::Message(MessageBuilder {
                         name: "Message".to_string(),
                         fields: vec![FieldBuilder {
-                            repeated: false,
+                            multiplicity: Multiplicity::Single,
                             field_type: FieldTypeBuilder::Builtin(ValueType::UInt32),
                             name: "field".to_string(),
                             number: 1,
