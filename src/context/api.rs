@@ -113,6 +113,12 @@ impl TypeInfo
 
 impl MessageInfo
 {
+    /// Iterates all message fields.
+    pub fn iter_fields(&self) -> impl Iterator<Item = &MessageField>
+    {
+        self.fields.values()
+    }
+
     /// Get a field by its number.
     pub fn get_field(&self, number: u64) -> Option<&MessageField>
     {
@@ -125,6 +131,11 @@ impl MessageInfo
         self.fields_by_name
             .get(name)
             .and_then(|id| self.get_field(*id))
+    }
+
+    /// Gets a oneof by a oneof reference.
+    pub fn get_oneof(&self, oneof: OneofRef) -> Option<&Oneof> {
+        self.oneofs.iter().find(|oo| oo.self_ref == oneof)
     }
 }
 
