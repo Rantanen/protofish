@@ -134,7 +134,8 @@ impl MessageInfo
     }
 
     /// Gets a oneof by a oneof reference.
-    pub fn get_oneof(&self, oneof: OneofRef) -> Option<&Oneof> {
+    pub fn get_oneof(&self, oneof: OneofRef) -> Option<&Oneof>
+    {
         self.oneofs.iter().find(|oo| oo.self_ref == oneof)
     }
 }

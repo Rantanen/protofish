@@ -1,6 +1,5 @@
 use protofish::context::{
-    Context, EnumField, EnumInfo, MessageField, MessageInfo, Oneof, Package, TypeParent,
-    ValueType,
+    Context, EnumField, EnumInfo, MessageField, MessageInfo, Oneof, Package, TypeParent, ValueType,
 };
 
 #[test]
@@ -107,26 +106,26 @@ fn iterate_fields()
     let mut fields = message.iter_fields();
 
     let immediate = fields.next().unwrap();
-    assert_eq!( immediate.name, "immediate" );
-    assert!( immediate.oneof.is_none() );
+    assert_eq!(immediate.name, "immediate");
+    assert!(immediate.oneof.is_none());
 
     let a1 = fields.next().unwrap();
-    assert_eq!( a1.name, "a1" );
-    assert!( a1.oneof.is_some() );
-    assert_eq!( message.get_oneof(a1.oneof.unwrap()).unwrap().name, "a" );
+    assert_eq!(a1.name, "a1");
+    assert!(a1.oneof.is_some());
+    assert_eq!(message.get_oneof(a1.oneof.unwrap()).unwrap().name, "a");
     let a2 = fields.next().unwrap();
-    assert_eq!( a2.name, "a2" );
-    assert!( a2.oneof.is_some() );
-    assert_eq!( message.get_oneof(a2.oneof.unwrap()).unwrap().name, "a" );
+    assert_eq!(a2.name, "a2");
+    assert!(a2.oneof.is_some());
+    assert_eq!(message.get_oneof(a2.oneof.unwrap()).unwrap().name, "a");
 
     let b1 = fields.next().unwrap();
-    assert_eq!( b1.name, "b1" );
-    assert!( b1.oneof.is_some() );
-    assert_eq!( message.get_oneof(b1.oneof.unwrap()).unwrap().name, "b" );
+    assert_eq!(b1.name, "b1");
+    assert!(b1.oneof.is_some());
+    assert_eq!(message.get_oneof(b1.oneof.unwrap()).unwrap().name, "b");
     let b2 = fields.next().unwrap();
-    assert!( b2.oneof.is_some() );
-    assert_eq!( message.get_oneof(b2.oneof.unwrap()).unwrap().name, "b" );
-    assert_eq!( b2.name, "b2" );
+    assert!(b2.oneof.is_some());
+    assert_eq!(message.get_oneof(b2.oneof.unwrap()).unwrap().name, "b");
+    assert_eq!(b2.name, "b2");
 
-    assert_eq!( fields.next(), None );
+    assert_eq!(fields.next(), None);
 }
