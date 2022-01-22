@@ -183,13 +183,13 @@ impl Value
             ValueType::UInt32 => u32::from_unsigned_varint(data).map(Value::UInt32),
             ValueType::UInt64 => u64::from_unsigned_varint(data).map(Value::UInt64),
             ValueType::SInt32 => u32::from_unsigned_varint(data).map(|u| {
-                let sign = if u % 2 == 0 { 1i32 } else { -1i32 };
-                let magnitude = (u / 2) as i32;
+                let (sign, sign_bit) = if u % 2 == 0 { (1i32, 0) } else { (-1i32, 1) };
+                let magnitude = (u / 2) as i32 + sign_bit;
                 Value::SInt32(sign * magnitude)
             }),
             ValueType::SInt64 => u64::from_unsigned_varint(data).map(|u| {
-                let sign = if u % 2 == 0 { 1i64 } else { -1i64 };
-                let magnitude = (u / 2) as i64;
+                let (sign, sign_bit) = if u % 2 == 0 { (1i64, 0) } else { (-1i64, 1) };
+                let magnitude = (u / 2) as i64 + sign_bit;
                 Value::SInt64(sign * magnitude)
             }),
             ValueType::Fixed32 => {
@@ -292,15 +292,15 @@ impl Value
             }
             ValueType::SInt32 => {
                 read_packed! { SInt32 @ b = u32::from_signed_varint(&mut array) => {
-                    let sign = if b % 2 == 0 { 1i32 } else { -1i32 };
-                    let magnitude = (b / 2) as i32;
+                    let (sign, sign_bit) = if b % 2 == 0 { (1i32, 0) } else { (-1i32, 1) };
+                    let magnitude = (b / 2) as i32 + sign_bit;
                     sign * magnitude
                 } }
             }
             ValueType::SInt64 => {
                 read_packed! { SInt64 @ b = u64::from_signed_varint(&mut array) => {
-                    let sign = if b % 2 == 0 { 1i64 } else { -1i64 };
-                    let magnitude = (b / 2) as i64;
+                    let (sign, sign_bit) = if b % 2 == 0 { (1i64, 0) } else { (-1i64, 1) };
+                    let magnitude = (b / 2) as i64 + sign_bit;
                     sign * magnitude
                 } }
             }
@@ -367,11 +367,11 @@ impl Value
             Value::UInt64(v) => BytesMut::from(v.into_unsigned_varint().as_ref()),
             Value::SInt32(v) => {
                 let (v, sign_bit) = if *v < 0 { (-v, 1) } else { (*v, 0) };
-                (v * 2 + sign_bit).into_unsigned_varint()
+                (v * 2 - sign_bit).into_unsigned_varint()
             }
             Value::SInt64(v) => {
                 let (v, sign_bit) = if *v < 0 { (-v, 1) } else { (*v, 0) };
-                (v * 2 + sign_bit).into_unsigned_varint()
+                (v * 2 - sign_bit).into_unsigned_varint()
             }
             Value::Fixed32(v) => BytesMut::from(v.to_le_bytes().as_ref()),
             Value::Fixed64(v) => BytesMut::from(v.to_le_bytes().as_ref()),
@@ -467,16 +467,14 @@ impl PackedArray
             }
             PackedArray::SInt32(v) => {
                 write_packed! { v => |v| {
-                    let sign_bit = if *v < 0 { 1 } else { 0 };
-                    let v = *v as u64;
-                    (v * 2 + sign_bit).into_unsigned_varint()
+                    let (v, sign_bit) = if *v < 0 { (-v, 1) } else { (*v, 0) };
+                    (v * 2 - sign_bit).into_unsigned_varint()
                 } }
             }
             PackedArray::SInt64(v) => {
                 write_packed! { v => |v| {
-                    let sign_bit = if *v < 0 { 1 } else { 0 };
-                    let v = *v as u64;
-                    (v * 2 + sign_bit).into_unsigned_varint()
+                    let (v, sign_bit) = if *v < 0 { (-v, 1) } else { (*v, 0) };
+                    (v * 2 - sign_bit).into_unsigned_varint()
                 } }
             }
             PackedArray::Fixed32(v) => {
@@ -753,5 +751,62 @@ where
     {
         let v: u64 = unsafe { std::mem::transmute(self.try_into().unwrap()) };
         v.into_unsigned_varint()
+    }
+}
+
+
+#[cfg(test)]
+mod test
+{
+    use super::*;
+
+    #[test]
+    fn test_zigzag_encoding()
+    // Source: https://developers.google.com/protocol-buffers/docs/encoding#signed-ints
+    // Signed Original	Encoded As
+    // 0	            0
+    // -1	            1
+    // 1	            2
+    // -2	            3
+    // 2147483647	    4294967294
+    // -2147483648	    4294967295
+    {
+        let ctx = Context::parse(&[r#"
+            syntax = "proto3";
+            message Message {}
+        "#])
+        .unwrap();
+
+        // Singular
+        assert_eq!(
+            Value::SInt32(0).encode(&ctx),
+            Value::Int32(0).encode(&ctx)
+        );
+        assert_eq!(
+            Value::SInt32(-1).encode(&ctx),
+            Value::Int32(1).encode(&ctx)
+        );
+        assert_eq!(
+            Value::SInt32(1).encode(&ctx),
+            Value::Int32(2).encode(&ctx)
+        );
+        assert_eq!(
+            Value::SInt64(2147483647).encode(&ctx),
+            Value::Int64(4294967294).encode(&ctx)
+        );
+        assert_eq!(
+            Value::SInt64(-2147483648).encode(&ctx),
+            Value::Int64(4294967295).encode(&ctx)
+        );
+
+        // Packed
+        assert_eq!(
+            Value::Packed(PackedArray::SInt32(vec![0,-1,1,-2,2])).encode(&ctx),
+            Value::Packed(PackedArray::Int32(vec![0,1,2,3,4])).encode(&ctx),
+        );
+        assert_eq!(
+            Value::Packed(PackedArray::SInt64(vec![0,2147483647,-2147483648])).encode(&ctx),
+            Value::Packed(PackedArray::Int64(vec![0,4294967294,4294967295])).encode(&ctx),
+        );
     }
 }
