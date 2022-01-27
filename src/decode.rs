@@ -442,7 +442,7 @@ impl PackedArray
     {
         macro_rules! write_packed {
             ($value:ident => $convert:expr ) => {
-                $value.iter().map($convert).flatten().collect()
+                $value.iter().flat_map($convert).collect()
             };
         }
 
@@ -629,13 +629,12 @@ impl MessageValue
         self.fields
             .iter()
             .filter_map(|f| f.value.encode(ctx).map(|(w, b)| (f, w, b)))
-            .map(|(field, wire_type, bytes)| {
+            .flat_map(|(field, wire_type, bytes)| {
                 let tag = wire_type as u64 + (field.number << 3);
                 let mut field_data = tag.into_unsigned_varint();
                 field_data.extend_from_slice(&bytes);
                 field_data
             })
-            .flatten()
             .collect()
     }
 }
