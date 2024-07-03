@@ -3,8 +3,7 @@ use protofish::context::{
 };
 
 #[test]
-fn create_context_by_hand()
-{
+fn create_context_by_hand() {
     let parsed_context = Context::parse(&[r#"
         syntax = "proto3";
 
@@ -76,8 +75,7 @@ fn create_context_by_hand()
 }
 
 #[test]
-fn iterate_fields()
-{
+fn iterate_fields() {
     let context = Context::parse(&[r#"
         syntax = "proto3";
 

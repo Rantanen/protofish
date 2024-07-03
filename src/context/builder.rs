@@ -5,14 +5,12 @@ use std::path::PathBuf;
 use super::*;
 
 #[derive(Default)]
-pub(crate) struct ContextBuilder
-{
+pub(crate) struct ContextBuilder {
     pub(crate) packages: Vec<PackageBuilder>,
 }
 
 #[derive(Default, Debug, PartialEq)]
-pub(crate) struct PackageBuilder
-{
+pub(crate) struct PackageBuilder {
     pub(crate) path: PathBuf,
     pub(crate) name: Option<String>,
     pub(crate) imported_types: Vec<String>,
@@ -20,22 +18,19 @@ pub(crate) struct PackageBuilder
 }
 
 #[derive(Debug, PartialEq)]
-pub(crate) enum ProtobufItemBuilder
-{
+pub(crate) enum ProtobufItemBuilder {
     Type(ProtobufTypeBuilder),
     Service(ServiceBuilder),
 }
 
 #[derive(Debug, PartialEq)]
-pub(crate) enum ProtobufTypeBuilder
-{
+pub(crate) enum ProtobufTypeBuilder {
     Message(MessageBuilder),
     Enum(EnumBuilder),
 }
 
 #[derive(Default, Debug, PartialEq, Clone)]
-pub(crate) struct MessageBuilder
-{
+pub(crate) struct MessageBuilder {
     pub(crate) name: String,
     pub(crate) fields: Vec<FieldBuilder>,
     pub(crate) oneofs: Vec<OneofBuilder>,
@@ -44,31 +39,36 @@ pub(crate) struct MessageBuilder
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub(crate) enum InnerTypeBuilder
-{
+pub(crate) struct PseudoMapBuilder {
+    pub(crate) key_type: FieldTypeBuilder,
+    pub(crate) value_type: FieldTypeBuilder,
+    pub(crate) field_name: String,
+    pub(crate) number: u64,
+    pub(crate) options: Vec<ProtoOption>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub(crate) enum InnerTypeBuilder {
     Message(MessageBuilder),
     Enum(EnumBuilder),
 }
 
 #[derive(Default, Debug, PartialEq, Clone)]
-pub(crate) struct EnumBuilder
-{
+pub(crate) struct EnumBuilder {
     pub(crate) name: String,
     pub(crate) fields: Vec<EnumField>,
     pub(crate) options: Vec<ProtoOption>,
 }
 
 #[derive(Default, Debug, PartialEq)]
-pub(crate) struct ServiceBuilder
-{
+pub(crate) struct ServiceBuilder {
     pub(crate) name: String,
     pub(crate) rpcs: Vec<RpcBuilder>,
     pub(crate) options: Vec<ProtoOption>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub(crate) struct FieldBuilder
-{
+pub(crate) struct FieldBuilder {
     pub(crate) multiplicity: Multiplicity,
     pub(crate) field_type: FieldTypeBuilder,
     pub(crate) name: String,
@@ -77,23 +77,20 @@ pub(crate) struct FieldBuilder
 }
 
 #[derive(Default, Debug, PartialEq, Clone)]
-pub(crate) struct OneofBuilder
-{
+pub(crate) struct OneofBuilder {
     pub(crate) name: String,
     pub(crate) fields: Vec<FieldBuilder>,
     pub(crate) options: Vec<ProtoOption>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub(crate) enum FieldTypeBuilder
-{
+pub(crate) enum FieldTypeBuilder {
     Builtin(ValueType),
     Unknown(String),
 }
 
 #[derive(Default, Debug, PartialEq)]
-pub(crate) struct RpcBuilder
-{
+pub(crate) struct RpcBuilder {
     pub(crate) name: String,
     pub(crate) input: RpcArgBuilder,
     pub(crate) output: RpcArgBuilder,
@@ -101,16 +98,13 @@ pub(crate) struct RpcBuilder
 }
 
 #[derive(Default, Debug, PartialEq)]
-pub(crate) struct RpcArgBuilder
-{
+pub(crate) struct RpcArgBuilder {
     pub(crate) stream: bool,
     pub(crate) message: String,
 }
 
-impl ContextBuilder
-{
-    pub fn build(mut self) -> Result<Context, ParseError>
-    {
+impl ContextBuilder {
+    pub fn build(mut self) -> Result<Context, ParseError> {
         let mut cache = BuildCache::default();
         for (i, p) in self.packages.iter().enumerate() {
             p.populate(&mut cache, &mut vec![i])?;
@@ -194,21 +188,17 @@ impl ContextBuilder
         })
     }
 
-    fn take_type(&mut self, idx: &[usize]) -> ProtobufTypeBuilder
-    {
+    fn take_type(&mut self, idx: &[usize]) -> ProtobufTypeBuilder {
         self.packages[idx[0]].take_type(&idx[1..])
     }
 
-    fn take_service(&mut self, idx: &[usize]) -> ServiceBuilder
-    {
+    fn take_service(&mut self, idx: &[usize]) -> ServiceBuilder {
         self.packages[idx[0]].take_service(&idx[1..])
     }
 }
 
-impl PackageBuilder
-{
-    fn populate(&self, cache: &mut BuildCache, idx: &mut Vec<usize>) -> Result<(), ParseError>
-    {
+impl PackageBuilder {
+    fn populate(&self, cache: &mut BuildCache, idx: &mut Vec<usize>) -> Result<(), ParseError> {
         let mut path = match &self.name {
             Some(name) => name.split('.').collect(),
             None => vec![],
@@ -233,8 +223,7 @@ impl PackageBuilder
         Ok(())
     }
 
-    fn take_type(&mut self, idx: &[usize]) -> ProtobufTypeBuilder
-    {
+    fn take_type(&mut self, idx: &[usize]) -> ProtobufTypeBuilder {
         match &mut self.types[idx[0]] {
             ProtobufItemBuilder::Type(t) => match t {
                 ProtobufTypeBuilder::Message(m) => m.take_type(&idx[1..]),
@@ -248,8 +237,7 @@ impl PackageBuilder
         }
     }
 
-    fn take_service(&mut self, idx: &[usize]) -> ServiceBuilder
-    {
+    fn take_service(&mut self, idx: &[usize]) -> ServiceBuilder {
         match &mut self.types[idx[0]] {
             ProtobufItemBuilder::Service(e) => std::mem::take(e),
 
@@ -259,10 +247,8 @@ impl PackageBuilder
     }
 }
 
-impl ProtobufTypeBuilder
-{
-    fn build(self, self_data: &CacheData, cache: &BuildCache) -> Result<TypeInfo, ParseError>
-    {
+impl ProtobufTypeBuilder {
+    fn build(self, self_data: &CacheData, cache: &BuildCache) -> Result<TypeInfo, ParseError> {
         Ok(match self {
             ProtobufTypeBuilder::Message(m) => TypeInfo::Message(m.build(self_data, cache)?),
             ProtobufTypeBuilder::Enum(e) => TypeInfo::Enum(e.build(self_data, cache)?),
@@ -270,8 +256,7 @@ impl ProtobufTypeBuilder
     }
 }
 
-impl MessageBuilder
-{
+impl MessageBuilder {
     /// Lists types found in this message builder recursively into the build cache.
     ///
     /// On error the `path` and `idx` will be left in an undefined state.
@@ -280,8 +265,7 @@ impl MessageBuilder
         cache: &mut BuildCache,
         path: &mut Vec<&'a str>,
         idx: &mut Vec<usize>,
-    ) -> Result<(), ParseError>
-    {
+    ) -> Result<(), ParseError> {
         path.push(&self.name);
         let full_name = path.join(".");
         let cache_idx = cache.types.len();
@@ -320,8 +304,7 @@ impl MessageBuilder
         Ok(())
     }
 
-    fn take_type(&mut self, idx: &[usize]) -> ProtobufTypeBuilder
-    {
+    fn take_type(&mut self, idx: &[usize]) -> ProtobufTypeBuilder {
         if idx.is_empty() {
             ProtobufTypeBuilder::Message(MessageBuilder {
                 name: self.name.clone(),
@@ -339,8 +322,7 @@ impl MessageBuilder
         }
     }
 
-    fn build(self, self_data: &CacheData, cache: &BuildCache) -> Result<MessageInfo, ParseError>
-    {
+    fn build(self, self_data: &CacheData, cache: &BuildCache) -> Result<MessageInfo, ParseError> {
         let inner_types: Vec<_> = self
             .inner_types
             .iter()
@@ -419,10 +401,8 @@ impl MessageBuilder
     }
 }
 
-impl InnerTypeBuilder
-{
-    fn clone_name(&self) -> InnerTypeBuilder
-    {
+impl InnerTypeBuilder {
+    fn clone_name(&self) -> InnerTypeBuilder {
         match self {
             InnerTypeBuilder::Message(m) => InnerTypeBuilder::Message(MessageBuilder {
                 name: m.name.clone(),
@@ -436,15 +416,13 @@ impl InnerTypeBuilder
     }
 }
 
-impl FieldBuilder
-{
+impl FieldBuilder {
     fn build(
         self,
         self_data: &CacheData,
         cache: &BuildCache,
         oneof: Option<OneofRef>,
-    ) -> Result<MessageField, ParseError>
-    {
+    ) -> Result<MessageField, ParseError> {
         let multiplicity = resolve_multiplicity(self.multiplicity, &self.field_type, &self.options);
         Ok(MessageField {
             name: self.name,
@@ -461,8 +439,7 @@ fn resolve_multiplicity(
     proto_multiplicity: Multiplicity,
     field_type: &FieldTypeBuilder,
     options: &[ProtoOption],
-) -> Multiplicity
-{
+) -> Multiplicity {
     // If this isn't a repeated field, the multiplicity follows the proto one (single or optional).
     if proto_multiplicity != Multiplicity::Repeated {
         return proto_multiplicity;
@@ -489,10 +466,8 @@ fn resolve_multiplicity(
     Multiplicity::RepeatedPacked
 }
 
-impl FieldTypeBuilder
-{
-    fn build(self, self_data: &CacheData, cache: &BuildCache) -> Result<ValueType, ParseError>
-    {
+impl FieldTypeBuilder {
+    fn build(self, self_data: &CacheData, cache: &BuildCache) -> Result<ValueType, ParseError> {
         Ok(match self {
             FieldTypeBuilder::Builtin(vt) => vt,
             FieldTypeBuilder::Unknown(s) => {
@@ -513,23 +488,20 @@ impl FieldTypeBuilder
     }
 }
 
-impl InnerTypeBuilder
-{
+impl InnerTypeBuilder {
     fn populate<'a>(
         &'a self,
         cache: &mut BuildCache,
         path: &mut Vec<&'a str>,
         idx: &mut Vec<usize>,
-    ) -> Result<(), ParseError>
-    {
+    ) -> Result<(), ParseError> {
         match self {
             InnerTypeBuilder::Message(m) => m.populate(cache, path, idx),
             InnerTypeBuilder::Enum(e) => e.populate(cache, path, idx),
         }
     }
 
-    fn take_type(&mut self, idx: &[usize]) -> ProtobufTypeBuilder
-    {
+    fn take_type(&mut self, idx: &[usize]) -> ProtobufTypeBuilder {
         match self {
             InnerTypeBuilder::Message(m) => m.take_type(idx),
             InnerTypeBuilder::Enum(e) => e.take_type(idx),
@@ -537,8 +509,7 @@ impl InnerTypeBuilder
     }
 }
 
-impl EnumBuilder
-{
+impl EnumBuilder {
     /// Lists types found in this message builder recursively into the build cache.
     ///
     /// On error the `path` and `idx` will be left in an undefined state.
@@ -547,8 +518,7 @@ impl EnumBuilder
         cache: &mut BuildCache,
         path: &mut Vec<&'a str>,
         idx: &mut Vec<usize>,
-    ) -> Result<(), ParseError>
-    {
+    ) -> Result<(), ParseError> {
         path.push(&self.name);
         let full_name = path.join(".");
         let cache_idx = cache.types.len();
@@ -573,8 +543,7 @@ impl EnumBuilder
         Ok(())
     }
 
-    fn build(self, self_data: &CacheData, cache: &BuildCache) -> Result<EnumInfo, ParseError>
-    {
+    fn build(self, self_data: &CacheData, cache: &BuildCache) -> Result<EnumInfo, ParseError> {
         let fields_by_name = self
             .fields
             .iter()
@@ -594,8 +563,7 @@ impl EnumBuilder
         })
     }
 
-    fn take_type(&mut self, idx: &[usize]) -> ProtobufTypeBuilder
-    {
+    fn take_type(&mut self, idx: &[usize]) -> ProtobufTypeBuilder {
         if !idx.is_empty() {
             panic!("Trying to take an inner type from an enum");
         }
@@ -604,8 +572,7 @@ impl EnumBuilder
     }
 }
 
-impl ServiceBuilder
-{
+impl ServiceBuilder {
     /// Lists types found in this message builder recursively into the build cache.
     ///
     /// On error the `path` and `idx` will be left in an undefined state.
@@ -614,8 +581,7 @@ impl ServiceBuilder
         cache: &mut BuildCache,
         path: &mut Vec<&'a str>,
         idx: &mut Vec<usize>,
-    ) -> Result<(), ParseError>
-    {
+    ) -> Result<(), ParseError> {
         path.push(&self.name);
         let full_name = path.join(".");
         let cache_idx = cache.services.len();
@@ -639,8 +605,7 @@ impl ServiceBuilder
         Ok(())
     }
 
-    fn build(self, self_data: &CacheData, cache: &BuildCache) -> Result<Service, ParseError>
-    {
+    fn build(self, self_data: &CacheData, cache: &BuildCache) -> Result<Service, ParseError> {
         let rpcs: Vec<_> = self
             .rpcs
             .into_iter()
@@ -669,10 +634,8 @@ impl ServiceBuilder
     }
 }
 
-impl RpcBuilder
-{
-    fn build(self, self_data: &CacheData, cache: &BuildCache) -> Result<Rpc, ParseError>
-    {
+impl RpcBuilder {
+    fn build(self, self_data: &CacheData, cache: &BuildCache) -> Result<Rpc, ParseError> {
         Ok(Rpc {
             name: self.name,
             input: self.input.build(self_data, cache)?,
@@ -682,10 +645,8 @@ impl RpcBuilder
     }
 }
 
-impl RpcArgBuilder
-{
-    fn build(self, rpc_data: &CacheData, cache: &BuildCache) -> Result<RpcArg, ParseError>
-    {
+impl RpcArgBuilder {
+    fn build(self, rpc_data: &CacheData, cache: &BuildCache) -> Result<RpcArg, ParseError> {
         // Fetch the type data from the cache so we can figure out the type reference.
         let self_data = match cache.resolve_type(&self.message, &rpc_data.full_name) {
             Some(data) => data,
@@ -715,10 +676,8 @@ impl RpcArgBuilder
     }
 }
 
-impl MessageRef
-{
-    fn from(data: &CacheData) -> Self
-    {
+impl MessageRef {
+    fn from(data: &CacheData) -> Self {
         if data.item_type != ItemType::Message {
             panic!("Trying to create MessageRef for {:?}", data.item_type);
         }
@@ -726,10 +685,8 @@ impl MessageRef
     }
 }
 
-impl EnumRef
-{
-    fn from(data: &CacheData) -> Self
-    {
+impl EnumRef {
+    fn from(data: &CacheData) -> Self {
         if data.item_type != ItemType::Enum {
             panic!("Trying to create EnumRef for {:?}", data.item_type);
         }
@@ -738,26 +695,22 @@ impl EnumRef
 }
 
 #[derive(Default)]
-struct BuildCache
-{
+struct BuildCache {
     items: BTreeMap<String, (ItemType, usize)>,
     items_by_idx: BTreeMap<Vec<usize>, (ItemType, usize)>,
     types: Vec<CacheData>,
     services: Vec<CacheData>,
 }
 
-struct CacheData
-{
+struct CacheData {
     item_type: ItemType,
     idx_path: Vec<usize>,
     final_idx: usize,
     full_name: String,
 }
 
-impl BuildCache
-{
-    fn resolve_type(&self, relative_name: &str, mut current_path: &str) -> Option<&CacheData>
-    {
+impl BuildCache {
+    fn resolve_type(&self, relative_name: &str, mut current_path: &str) -> Option<&CacheData> {
         if let Some(absolute) = relative_name.strip_prefix('.') {
             return self.type_by_full_name(absolute);
         }
@@ -788,8 +741,7 @@ impl BuildCache
         }
     }
 
-    fn parent_type(&self, current: &[usize]) -> TypeParent
-    {
+    fn parent_type(&self, current: &[usize]) -> TypeParent {
         match current.len() {
             0 | 1 => panic!("Empty type ID path"),
             2 => TypeParent::Package(PackageRef(InternalRef(current[0]))),
@@ -800,22 +752,19 @@ impl BuildCache
         }
     }
 
-    fn type_by_full_name(&self, full_name: &str) -> Option<&CacheData>
-    {
+    fn type_by_full_name(&self, full_name: &str) -> Option<&CacheData> {
         self.items
             .get(full_name)
             .and_then(|(ty, i)| self.type_by_idx(*ty, *i))
     }
 
-    fn type_by_idx_path(&self, idx: &[usize]) -> Option<&CacheData>
-    {
+    fn type_by_idx_path(&self, idx: &[usize]) -> Option<&CacheData> {
         self.items_by_idx
             .get(idx)
             .and_then(|(ty, i)| self.type_by_idx(*ty, *i))
     }
 
-    fn type_by_idx(&self, item_type: ItemType, idx: usize) -> Option<&CacheData>
-    {
+    fn type_by_idx(&self, item_type: ItemType, idx: usize) -> Option<&CacheData> {
         match item_type {
             ItemType::Message => self.types.get(idx),
             ItemType::Enum => self.types.get(idx),

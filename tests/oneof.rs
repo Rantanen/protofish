@@ -1,6 +1,5 @@
 #[test]
-fn oneof()
-{
+fn oneof() {
     use protofish::context::Context;
 
     // Hey at least we're ensuring this doesn't panic. :<

@@ -8,19 +8,16 @@ use bytes::{Bytes, BytesMut};
 use std::convert::{TryFrom, TryInto};
 use std::fmt::Debug;
 
-impl Context
-{
+impl Context {
     /// Decode a message.
-    pub fn decode(&self, msg: MessageRef, data: &[u8]) -> MessageValue
-    {
+    pub fn decode(&self, msg: MessageRef, data: &[u8]) -> MessageValue {
         self.resolve_message(msg).decode(data, self)
     }
 }
 
 /// Decoded protocol buffer value.
 #[derive(Debug, PartialEq, Clone)]
-pub enum Value
-{
+pub enum Value {
     /// `double` value.
     Double(f64),
     /// `float` value.
@@ -73,8 +70,7 @@ pub enum Value
 
 /// Packed scalar fields.
 #[derive(Debug, PartialEq, Clone)]
-pub enum PackedArray
-{
+pub enum PackedArray {
     /// `double` value.
     Double(Vec<f64>),
     /// `float` value.
@@ -105,8 +101,7 @@ pub enum PackedArray
 
 /// Unknown value.
 #[derive(Debug, PartialEq, Clone)]
-pub enum UnknownValue
-{
+pub enum UnknownValue {
     /// Unknown varint (wire type = 0).
     Varint(u128),
 
@@ -131,8 +126,7 @@ pub enum UnknownValue
 
 /// Enum value.
 #[derive(Debug, PartialEq, Clone)]
-pub struct EnumValue
-{
+pub struct EnumValue {
     /// Reference to the enum type.
     pub enum_ref: EnumRef,
 
@@ -142,8 +136,7 @@ pub struct EnumValue
 
 /// Message value.
 #[derive(Debug, PartialEq, Clone)]
-pub struct MessageValue
-{
+pub struct MessageValue {
     /// Reference to the message type.
     pub msg_ref: MessageRef,
 
@@ -159,8 +152,7 @@ pub struct MessageValue
 
 /// Field value.
 #[derive(Debug, PartialEq, Clone)]
-pub struct FieldValue
-{
+pub struct FieldValue {
     /// Field number.
     pub number: u64,
 
@@ -168,10 +160,8 @@ pub struct FieldValue
     pub value: Value,
 }
 
-impl Value
-{
-    fn decode(data: &mut &[u8], vt_raw: u8, vt: &ValueType, ctx: &Context) -> Self
-    {
+impl Value {
+    fn decode(data: &mut &[u8], vt_raw: u8, vt: &ValueType, ctx: &Context) -> Self {
         let original = *data;
         let opt = match vt {
             ValueType::Double => {
@@ -233,8 +223,7 @@ impl Value
         })
     }
 
-    fn decode_packed(data: &mut &[u8], vt_raw: u8, vt: &ValueType) -> Self
-    {
+    fn decode_packed(data: &mut &[u8], vt_raw: u8, vt: &ValueType) -> Self {
         let original = *data;
         let length = match usize::from_unsigned_varint(data) {
             Some(len) => len,
@@ -323,8 +312,7 @@ impl Value
         }
     }
 
-    fn decode_unknown(data: &mut &[u8], vt: u8) -> Value
-    {
+    fn decode_unknown(data: &mut &[u8], vt: u8) -> Value {
         let original = *data;
         let value =
             match vt {
@@ -356,8 +344,7 @@ impl Value
             .unwrap_or_else(|| Value::Incomplete(vt, Bytes::copy_from_slice(data)))
     }
 
-    fn encode(&self, ctx: &Context) -> Option<(u8, BytesMut)>
-    {
+    fn encode(&self, ctx: &Context) -> Option<(u8, BytesMut)> {
         let bytes = match self {
             Value::Double(v) => BytesMut::from(v.to_le_bytes().as_ref()),
             Value::Float(v) => BytesMut::from(v.to_le_bytes().as_ref()),
@@ -403,8 +390,7 @@ impl Value
         Some((self.wire_type(), bytes))
     }
 
-    fn wire_type(&self) -> u8
-    {
+    fn wire_type(&self) -> u8 {
         match self {
             Value::Double(..) => 1,
             Value::Float(..) => 5,
@@ -436,10 +422,8 @@ impl Value
     }
 }
 
-impl PackedArray
-{
-    fn encode(&self) -> BytesMut
-    {
+impl PackedArray {
+    fn encode(&self) -> BytesMut {
         macro_rules! write_packed {
             ($value:ident => $convert:expr ) => {
                 $value.iter().flat_map($convert).collect()
@@ -500,14 +484,12 @@ impl PackedArray
     }
 }
 
-fn return_incomplete(data: &mut &[u8], vt: u8, original: &[u8]) -> Value
-{
+fn return_incomplete(data: &mut &[u8], vt: u8, original: &[u8]) -> Value {
     *data = &[];
     Value::Incomplete(vt, Bytes::copy_from_slice(original))
 }
 
-fn try_read_8_bytes(data: &mut &[u8]) -> Option<[u8; 8]>
-{
+fn try_read_8_bytes(data: &mut &[u8]) -> Option<[u8; 8]> {
     if data.len() < 8 {
         return None;
     }
@@ -521,8 +503,7 @@ fn try_read_8_bytes(data: &mut &[u8]) -> Option<[u8; 8]>
     }
 }
 
-fn try_read_4_bytes(data: &mut &[u8]) -> Option<[u8; 4]>
-{
+fn try_read_4_bytes(data: &mut &[u8]) -> Option<[u8; 4]> {
     if data.len() < 4 {
         return None;
     }
@@ -536,8 +517,7 @@ fn try_read_4_bytes(data: &mut &[u8]) -> Option<[u8; 4]>
     }
 }
 
-fn read_string(data: &mut &[u8]) -> Option<String>
-{
+fn read_string(data: &mut &[u8]) -> Option<String> {
     let original = *data;
     let len = usize::from_unsigned_varint(data)?;
     if len > data.len() {
@@ -549,8 +529,7 @@ fn read_string(data: &mut &[u8]) -> Option<String>
     Some(String::from_utf8_lossy(str_data).to_string())
 }
 
-fn read_bytes(data: &mut &[u8]) -> Option<Bytes>
-{
+fn read_bytes(data: &mut &[u8]) -> Option<Bytes> {
     let original = *data;
     let len = usize::from_unsigned_varint(data)?;
     if len > data.len() {
@@ -562,15 +541,13 @@ fn read_bytes(data: &mut &[u8]) -> Option<Bytes>
     Some(Bytes::copy_from_slice(str_data))
 }
 
-impl MessageInfo
-{
+impl MessageInfo {
     /// Decode a message.
     ///
     /// Will **panic** if the message defined by the `MessageRef` does not exist in this context.
     /// Such panic means the `MessageRef` came from a different context. The panic is not
     /// guaranteed, as a message with an equal `MessageRef` may exist in multiple contexts.
-    pub fn decode(&self, mut data: &[u8], ctx: &Context) -> MessageValue
-    {
+    pub fn decode(&self, mut data: &[u8], ctx: &Context) -> MessageValue {
         let mut msg = MessageValue {
             msg_ref: self.self_ref,
             fields: vec![],
@@ -617,15 +594,13 @@ impl MessageInfo
     }
 }
 
-impl MessageValue
-{
+impl MessageValue {
     /// Encodes a message value into protobuf wire format.
     ///
     /// Will **panic** if the message defined by the `MessageRef` does not exist in this context.
     /// Such panic means the `MessageRef` came from a different context. The panic is not
     /// guaranteed, as a message with an equal `MessageRef` may exist in multiple contexts.
-    pub fn encode(&self, ctx: &Context) -> bytes::BytesMut
-    {
+    pub fn encode(&self, ctx: &Context) -> bytes::BytesMut {
         self.fields
             .iter()
             .filter_map(|f| f.value.encode(ctx).map(|(w, b)| (f, w, b)))
@@ -639,11 +614,9 @@ impl MessageValue
     }
 }
 
-impl UnknownValue
-{
+impl UnknownValue {
     /// Encodes a message value into protobuf wire format.
-    fn encode(&self) -> bytes::BytesMut
-    {
+    fn encode(&self) -> bytes::BytesMut {
         match self {
             UnknownValue::Varint(v) => v.into_unsigned_varint(),
             UnknownValue::Fixed64(v) => BytesMut::from(v.to_le_bytes().as_ref()),
@@ -658,13 +631,11 @@ impl UnknownValue
     }
 }
 
-trait FromUnsignedVarint: Sized
-{
+trait FromUnsignedVarint: Sized {
     fn from_unsigned_varint(data: &mut &[u8]) -> Option<Self>;
 }
 
-trait ToUnsignedVarint: Sized
-{
+trait ToUnsignedVarint: Sized {
     fn into_unsigned_varint(self) -> BytesMut;
 }
 
@@ -672,8 +643,7 @@ impl<T: Default + TryFrom<u64>> FromUnsignedVarint for T
 where
     T::Error: Debug,
 {
-    fn from_unsigned_varint(data: &mut &[u8]) -> Option<Self>
-    {
+    fn from_unsigned_varint(data: &mut &[u8]) -> Option<Self> {
         let mut result = 0u64;
         let mut idx = 0;
         loop {
@@ -701,8 +671,7 @@ impl<T: Default + TryInto<u64>> ToUnsignedVarint for T
 where
     T::Error: Debug,
 {
-    fn into_unsigned_varint(self) -> BytesMut
-    {
+    fn into_unsigned_varint(self) -> BytesMut {
         let mut value: u64 = self.try_into().unwrap();
         let mut data: Vec<u8> = Vec::with_capacity(8);
         loop {
@@ -719,13 +688,11 @@ where
     }
 }
 
-trait FromSignedVarint: Sized
-{
+trait FromSignedVarint: Sized {
     fn from_signed_varint(data: &mut &[u8]) -> Option<Self>;
 }
 
-trait ToSignedVarint: Sized
-{
+trait ToSignedVarint: Sized {
     fn into_signed_varint(self) -> BytesMut;
 }
 
@@ -733,8 +700,7 @@ impl<T: Default + TryFrom<i64>> FromSignedVarint for T
 where
     T::Error: Debug,
 {
-    fn from_signed_varint(data: &mut &[u8]) -> Option<Self>
-    {
+    fn from_signed_varint(data: &mut &[u8]) -> Option<Self> {
         u64::from_unsigned_varint(data).map(|u| {
             let signed: i64 = unsafe { std::mem::transmute(u) };
             signed.try_into().unwrap()
@@ -746,16 +712,14 @@ impl<T: Default + TryInto<i64>> ToSignedVarint for T
 where
     T::Error: Debug,
 {
-    fn into_signed_varint(self) -> BytesMut
-    {
+    fn into_signed_varint(self) -> BytesMut {
         let v: u64 = unsafe { std::mem::transmute(self.try_into().unwrap()) };
         v.into_unsigned_varint()
     }
 }
 
 #[cfg(test)]
-mod test
-{
+mod test {
     use super::*;
 
     #[test]

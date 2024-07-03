@@ -1,6 +1,5 @@
 #[test]
-fn encode_message()
-{
+fn encode_message() {
     use bytes::BufMut;
     use protofish::{
         context::Context,
@@ -18,6 +17,7 @@ fn encode_message()
           double dbl = 6;
           bool b = 7;
           Message child = 10;
+          map<int32, string> mymap = 11;
       }
     "#])
     .unwrap();
@@ -67,6 +67,8 @@ fn encode_message()
                     }],
                 })),
             },
+            // note we don't add any data for the map type
+            // but due to how wire encoding works, decoding will still work
         ],
     };
 

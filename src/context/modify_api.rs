@@ -1,24 +1,20 @@
 use super::*;
 
-impl Context
-{
+impl Context {
     /// Insert a new message definition to the context.
-    pub fn insert_message(&mut self, ty: MessageInfo) -> Result<MessageRef, InsertError>
-    {
+    pub fn insert_message(&mut self, ty: MessageInfo) -> Result<MessageRef, InsertError> {
         self.insert_type(TypeInfo::Message(ty)).map(MessageRef)
     }
 
     /// Insert a new enum definition to the context.
-    pub fn insert_enum(&mut self, ty: EnumInfo) -> Result<EnumRef, InsertError>
-    {
+    pub fn insert_enum(&mut self, ty: EnumInfo) -> Result<EnumRef, InsertError> {
         self.insert_type(TypeInfo::Enum(ty)).map(EnumRef)
     }
 
     /// Insert a new package to the context.
     ///
     /// Returns an error if the package with the same name already exists.
-    pub fn insert_package(&mut self, mut pkg: Package) -> Result<PackageRef, PackageRef>
-    {
+    pub fn insert_package(&mut self, mut pkg: Package) -> Result<PackageRef, PackageRef> {
         let pkg_ref = PackageRef(InternalRef(self.packages.len()));
         for existing in &self.packages {
             if existing.name == pkg.name {
@@ -31,8 +27,7 @@ impl Context
         Ok(pkg_ref)
     }
 
-    fn insert_type(&mut self, mut ty: TypeInfo) -> Result<InternalRef, InsertError>
-    {
+    fn insert_type(&mut self, mut ty: TypeInfo) -> Result<InternalRef, InsertError> {
         use std::collections::hash_map::Entry;
 
         // First validate the operation. We'll want to ensure the operation succeeds before we make
@@ -108,11 +103,9 @@ impl Context
     }
 }
 
-impl Package
-{
+impl Package {
     /// Create a new package.
-    pub fn new(name: Option<String>) -> Self
-    {
+    pub fn new(name: Option<String>) -> Self {
         Self {
             name,
             self_ref: PackageRef(InternalRef(0)),
@@ -122,14 +115,12 @@ impl Package
     }
 }
 
-impl MessageInfo
-{
+impl MessageInfo {
     /// Create a new message info.
     ///
     /// Before inserting the message info into a [`Context`] certain fields such as `self_ref` or
     /// `full_name` are not valid.
-    pub fn new(name: String, parent: TypeParent) -> Self
-    {
+    pub fn new(name: String, parent: TypeParent) -> Self {
         MessageInfo {
             name,
             parent,
@@ -145,8 +136,7 @@ impl MessageInfo
     }
 
     /// Add a field to the type.
-    pub fn add_field(&mut self, field: MessageField) -> Result<(), MemberInsertError>
-    {
+    pub fn add_field(&mut self, field: MessageField) -> Result<(), MemberInsertError> {
         use std::collections::btree_map::Entry;
 
         let num = field.number;
@@ -174,8 +164,7 @@ impl MessageInfo
     }
 
     /// Add a oneof record to the message.
-    pub fn add_oneof(&mut self, mut oneof: Oneof) -> Result<OneofRef, OneofInsertError>
-    {
+    pub fn add_oneof(&mut self, mut oneof: Oneof) -> Result<OneofRef, OneofInsertError> {
         let oneof_ref = OneofRef(InternalRef(self.oneofs.len()));
         for o in &self.oneofs {
             if o.name == oneof.name {
@@ -205,11 +194,9 @@ impl MessageInfo
     }
 }
 
-impl MessageField
-{
+impl MessageField {
     /// Create a new message field.
-    pub fn new(name: String, number: u64, field_type: ValueType) -> Self
-    {
+    pub fn new(name: String, number: u64, field_type: ValueType) -> Self {
         Self {
             name,
             number,
@@ -221,11 +208,9 @@ impl MessageField
     }
 }
 
-impl Oneof
-{
+impl Oneof {
     /// Create a new Oneof definition.
-    pub fn new(name: String) -> Self
-    {
+    pub fn new(name: String) -> Self {
         Self {
             name,
             self_ref: OneofRef(InternalRef(0)),
@@ -235,11 +220,9 @@ impl Oneof
     }
 }
 
-impl EnumInfo
-{
+impl EnumInfo {
     /// Create a new enum info.
-    pub fn new(name: String, parent: TypeParent) -> Self
-    {
+    pub fn new(name: String, parent: TypeParent) -> Self {
         Self {
             name,
             parent,
@@ -251,8 +234,7 @@ impl EnumInfo
     }
 
     /// Add a field to the enum definition.
-    pub fn add_field(&mut self, field: EnumField) -> Result<(), MemberInsertError>
-    {
+    pub fn add_field(&mut self, field: EnumField) -> Result<(), MemberInsertError> {
         use std::collections::btree_map::Entry;
 
         let value = field.value;
@@ -272,11 +254,9 @@ impl EnumInfo
     }
 }
 
-impl EnumField
-{
+impl EnumField {
     /// Create a new enum field.
-    pub fn new(name: String, value: i64) -> Self
-    {
+    pub fn new(name: String, value: i64) -> Self {
         Self {
             name,
             value,

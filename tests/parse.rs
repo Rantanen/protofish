@@ -1,6 +1,5 @@
 #[test]
-fn parse()
-{
+fn parse() {
     use protofish::context::{
         Context, MessageField, MessageInfo, Multiplicity, Package, TypeParent, ValueType,
     };

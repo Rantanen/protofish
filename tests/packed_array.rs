@@ -1,6 +1,5 @@
 #[test]
-fn repeated()
-{
+fn repeated() {
     use bytes::BufMut;
     use protofish::{
         context::Context,

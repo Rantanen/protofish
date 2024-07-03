@@ -36,28 +36,24 @@ pub struct OneofRef(InternalRef);
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
 #[non_exhaustive]
-pub enum ParseError
-{
+pub enum ParseError {
     /// Syntax error in the input files.
     #[snafu(display("Parsing error: {}", source))]
-    SyntaxError
-    {
+    SyntaxError {
         /// Source error.
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
     /// Duplicate type.
     #[snafu(display("Duplicate type: {}", name))]
-    DuplicateType
-    {
+    DuplicateType {
         /// Type.
         name: String,
     },
 
     /// Unknown type reference.
     #[snafu(display("Unknown type '{}' in '{}'", name, context))]
-    TypeNotFound
-    {
+    TypeNotFound {
         /// Type name.
         name: String,
         /// Type that referred to the unknown type.
@@ -72,8 +68,7 @@ pub enum ParseError
         context,
         expected
     ))]
-    InvalidTypeKind
-    {
+    InvalidTypeKind {
         /// Type that is of the wrong kind.
         type_name: String,
 
@@ -91,11 +86,9 @@ pub enum ParseError
 /// Error modifying the context.
 #[derive(Debug, Snafu)]
 #[non_exhaustive]
-pub enum InsertError
-{
+pub enum InsertError {
     /// A type conflicts with an existing type.
-    TypeExists
-    {
+    TypeExists {
         /// The previous type that conflicts with the new one.
         original: TypeRef,
     },
@@ -104,8 +97,7 @@ pub enum InsertError
 /// Error modifying a type.
 #[derive(Debug)]
 #[non_exhaustive]
-pub enum MemberInsertError
-{
+pub enum MemberInsertError {
     /// A field with the same number already exists.
     NumberConflict,
 
@@ -119,14 +111,12 @@ pub enum MemberInsertError
 /// Error modifying a type.
 #[derive(Debug)]
 #[non_exhaustive]
-pub enum OneofInsertError
-{
+pub enum OneofInsertError {
     /// A oneof with the same name already exists.
     NameConflict,
 
     /// The oneof refers to a field that doesn't exist.
-    FieldNotFound
-    {
+    FieldNotFound {
         /// Field number the Oneof referenced.
         field: u64,
     },
@@ -134,8 +124,7 @@ pub enum OneofInsertError
 
 /// Type reference that references either message or enum type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum TypeRef
-{
+pub enum TypeRef {
     /// Message type reference.
     Message(MessageRef),
 
@@ -145,8 +134,7 @@ pub enum TypeRef
 
 /// Protobuf item type
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum ItemType
-{
+pub enum ItemType {
     /// `message` item
     Message,
 
@@ -162,8 +150,7 @@ pub enum ItemType
 /// Contains type information parsed from the files. Required for decoding
 /// incoming Protobuf messages.
 #[derive(Default, Debug, PartialEq)]
-pub struct Context
-{
+pub struct Context {
     packages: Vec<Package>,
     types: Vec<TypeInfo>,
     types_by_name: HashMap<String, usize>,
@@ -173,8 +160,7 @@ pub struct Context
 
 /// Package details.
 #[derive(Debug, PartialEq)]
-pub struct Package
-{
+pub struct Package {
     /// Package name. None for an anonymous package.
     name: Option<String>,
 
@@ -190,8 +176,7 @@ pub struct Package
 
 /// Message or enum type.
 #[derive(Debug, PartialEq)]
-pub enum TypeInfo
-{
+pub enum TypeInfo {
     /// Message.
     Message(MessageInfo),
 
@@ -202,8 +187,7 @@ pub enum TypeInfo
 /// Message details
 #[derive(Debug, PartialEq)]
 #[non_exhaustive]
-pub struct MessageInfo
-{
+pub struct MessageInfo {
     /// Message name.
     pub name: String,
 
@@ -229,8 +213,7 @@ pub struct MessageInfo
 
 /// Reference to a type parent.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TypeParent
-{
+pub enum TypeParent {
     /// Reference to a package for top-level types.
     Package(PackageRef),
 
@@ -241,8 +224,7 @@ pub enum TypeParent
 /// Enum details
 #[derive(Debug, PartialEq)]
 #[non_exhaustive]
-pub struct EnumInfo
-{
+pub struct EnumInfo {
     /// Enum name.
     pub name: String,
 
@@ -262,8 +244,7 @@ pub struct EnumInfo
 /// Message field details.
 #[derive(Debug, PartialEq)]
 #[non_exhaustive]
-pub struct MessageField
-{
+pub struct MessageField {
     /// Field name.
     pub name: String,
 
@@ -285,8 +266,7 @@ pub struct MessageField
 
 /// Defines the multiplicity of the field values.
 #[derive(Debug, PartialEq, Clone)]
-pub enum Multiplicity
-{
+pub enum Multiplicity {
     /// Field is not repeated.
     Single,
 
@@ -303,8 +283,7 @@ pub enum Multiplicity
 /// Message `oneof` details.
 #[derive(Debug, PartialEq)]
 #[non_exhaustive]
-pub struct Oneof
-{
+pub struct Oneof {
     /// Name of the `oneof` structure.
     pub name: String,
 
@@ -321,8 +300,7 @@ pub struct Oneof
 /// Enum field details.
 #[derive(Debug, PartialEq, Clone)]
 #[non_exhaustive]
-pub struct EnumField
-{
+pub struct EnumField {
     /// Enum field name.
     pub name: String,
 
@@ -335,8 +313,7 @@ pub struct EnumField
 
 /// Field value types.
 #[derive(Clone, Debug, PartialEq)]
-pub enum ValueType
-{
+pub enum ValueType {
     /// `double`
     Double,
 
@@ -392,8 +369,7 @@ pub enum ValueType
 /// Service details
 #[derive(Debug, PartialEq)]
 #[non_exhaustive]
-pub struct Service
-{
+pub struct Service {
     /// Service name.
     pub name: String,
 
@@ -418,8 +394,7 @@ pub struct Service
 /// Rpc operation
 #[derive(Debug, PartialEq)]
 #[non_exhaustive]
-pub struct Rpc
-{
+pub struct Rpc {
     /// Operation name.
     pub name: String,
 
@@ -436,8 +411,7 @@ pub struct Rpc
 /// Rpc operation input or output details.
 #[derive(Debug, PartialEq)]
 #[non_exhaustive]
-pub struct RpcArg
-{
+pub struct RpcArg {
     /// References to the message type.
     pub message: MessageRef,
 
@@ -447,8 +421,7 @@ pub struct RpcArg
 
 /// A single option.
 #[derive(Debug, PartialEq, Clone)]
-pub struct ProtoOption
-{
+pub struct ProtoOption {
     /// Option name.
     pub name: String,
 
@@ -458,8 +431,7 @@ pub struct ProtoOption
 
 /// Constant value, used for options.
 #[derive(Debug, PartialEq, Clone)]
-pub enum Constant
-{
+pub enum Constant {
     /// An ident `foo.bar.baz`.
     Ident(String),
 
@@ -480,13 +452,11 @@ pub enum Constant
 }
 
 #[cfg(test)]
-mod test
-{
+mod test {
     use super::*;
 
     #[test]
-    fn basic_package()
-    {
+    fn basic_package() {
         let ctx = Context::parse(&[r#"
             syntax = "proto3";
             message Message {}
@@ -498,8 +468,7 @@ mod test
     }
 
     #[test]
-    fn basic_multiple_package()
-    {
+    fn basic_multiple_package() {
         let ctx = Context::parse(&[
             r#"
                 syntax = "proto3";
