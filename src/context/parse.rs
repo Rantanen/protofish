@@ -184,11 +184,11 @@ impl FieldBuilder
         let mut inner = p.into_inner();
         let multiplicity = match inner.next().unwrap().into_inner().next() {
             Some(t) => {
-                let multiplicity = t.into_inner().next().unwrap().as_rule();
-                match multiplicity {
+                let field_multiplicity = t.into_inner().next().unwrap().as_rule();
+                match field_multiplicity {
                     Rule::optional => Multiplicity::Optional,
                     Rule::repeated => Multiplicity::Repeated,
-                    r => unreachable!("{:?}: {:?}", r, multiplicity),
+                    r => unreachable!("{:?}: {:?}", r, field_multiplicity),
                 }
             }
             None => Multiplicity::Single,
