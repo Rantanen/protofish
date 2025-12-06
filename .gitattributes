@@ -1,0 +1,6 @@
+*.rs text
+*.toml text
+*.pest text
+*.md text
+LICENSE-MIT text
+LICENSE-APACHE text
