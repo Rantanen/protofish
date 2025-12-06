@@ -1,7 +1,6 @@
 #[test]
 fn encode_message()
 {
-    use bytes::BufMut;
     use protofish::{
         context::Context,
         decode::{FieldValue, MessageValue, Value},
