@@ -19,8 +19,10 @@ impl Context
         T: IntoIterator<Item = S>,
         S: AsRef<str>,
     {
+        // remove dulicate files from the files list
+        let file_set: std::collections::HashSet<String> = files.into_iter().map(|f| f.as_ref().to_string()).collect();
         let builder = ContextBuilder {
-            packages: files
+            packages: file_set
                 .into_iter()
                 .map(|f| PackageBuilder::parse_str(f.as_ref()))
                 .collect::<Result<_, _>>()?,
@@ -179,16 +181,17 @@ impl ServiceBuilder
 
 impl FieldBuilder
 {
+    #[allow(bindings_with_variant_name)]
     pub fn parse(p: Pair<Rule>) -> Self
     {
         let mut inner = p.into_inner();
         let multiplicity = match inner.next().unwrap().into_inner().next() {
             Some(t) => {
-                let multiplicity = t.into_inner().next().unwrap().as_rule();
-                match multiplicity {
+                let multiplicity_r = t.into_inner().next().unwrap().as_rule();
+                match multiplicity_r {
                     Rule::optional => Multiplicity::Optional,
                     Rule::repeated => Multiplicity::Repeated,
-                    r => unreachable!("{:?}: {:?}", r, multiplicity),
+                    r => unreachable!("{:?}: {:?}", r, multiplicity_r),
                 }
             }
             None => Multiplicity::Single,

@@ -7,7 +7,7 @@ decimalDigit = { '0'..'9' }
 octalDigit = { '0'..'7' }
 hexDigit = { '0'..'9' | 'A'..'F' | 'a'..'f' }
 
-ident = @{ letter ~ ( letter | decimalDigit | "_" )* }
+ ident = @{ (letter | "_")  ~ ( letter | decimalDigit | "_" )* }
 fullIdent = { ident ~ ( "." ~ ident )* }
 messageName = { ident }
 enumName = { ident }
