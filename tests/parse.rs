@@ -13,6 +13,7 @@ fn parse()
           optional int64 large = 3;
           repeated sint32 signed = 4;
           Message child = 10;
+          int32 _underscore = 11;
       }
     "#])
     .unwrap();
@@ -40,10 +41,13 @@ fn parse()
         ValueType::Message(message.self_ref),
     );
 
+    let underscore_field = MessageField::new("_underscore".to_string(), 11, ValueType::Int32);
+
     message.add_field(b_field).unwrap();
     message.add_field(large_field).unwrap();
     message.add_field(signed_field).unwrap();
     message.add_field(child_field).unwrap();
+    message.add_field(underscore_field).unwrap();
 
     expected.insert_message(message).unwrap();
 
