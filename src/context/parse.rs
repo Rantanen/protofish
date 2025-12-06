@@ -20,7 +20,8 @@ impl Context
         S: AsRef<str>,
     {
         // remove dulicate files from the files list
-        let file_set: std::collections::HashSet<String> = files.into_iter().map(|f| f.as_ref().to_string()).collect();
+        let file_set: std::collections::HashSet<String> =
+            files.into_iter().map(|f| f.as_ref().to_string()).collect();
         let builder = ContextBuilder {
             packages: file_set
                 .into_iter()
