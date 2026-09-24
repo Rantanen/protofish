@@ -149,6 +149,13 @@ impl EnumInfo
     {
         self.fields_by_value.get(&value)
     }
+
+    /// Gets a field by name.
+    pub fn get_field_by_name(&self, name: &str) -> Option<&EnumField>
+    {
+        let value = self.fields_by_name.get(name)?;
+        self.fields_by_value.get(value)
+    }
 }
 
 impl Service
