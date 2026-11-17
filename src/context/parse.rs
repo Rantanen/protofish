@@ -101,7 +101,11 @@ impl MessageBuilder
                 }
                 Rule::option => options.push(ProtoOption::parse(p)),
                 Rule::oneof => oneofs.push(OneofBuilder::parse(p)),
-                Rule::mapField => unimplemented!("Maps are not supported"),
+                Rule::mapField => {
+                    let (entry, field) = parse_map_field(p);
+                    inner_types.push(InnerTypeBuilder::Message(entry));
+                    fields.push(field);
+                }
                 Rule::reserved => {} // We don't need to care about reserved field numbers.
                 Rule::emptyStatement => {}
                 r => unreachable!("{:?}: {:?}", r, p),
@@ -255,6 +259,85 @@ impl OneofBuilder
             options,
         }
     }
+}
+
+/// Parses a `map<K, V> name = N;` field into the form it has on the wire.
+///
+/// Maps are encoded as if they were declared as:
+///
+/// ```proto
+/// message NameEntry {
+///     K key = 1;
+///     V value = 2;
+/// }
+/// repeated NameEntry name = N;
+/// ```
+///
+/// See https://protobuf.dev/programming-guides/proto3/#backwards. The entry message is named the
+/// same way as `protoc` names it, so the types match the ones in descriptors that `protoc` and
+/// gRPC server reflection produce.
+fn parse_map_field(p: Pair<Rule>) -> (MessageBuilder, FieldBuilder)
+{
+    let mut inner = p.into_inner();
+    let key_type = parse_field_type(inner.next().unwrap().as_str());
+    let value_type = parse_field_type(inner.next().unwrap().as_str());
+    let name = inner.next().unwrap().as_str().to_string();
+    let number = parse_uint_literal(inner.next().unwrap());
+    let options = match inner.next() {
+        Some(p) => ProtoOption::parse_options(p.into_inner()),
+        None => vec![],
+    };
+
+    let entry_name = map_entry_name(&name);
+    let entry = MessageBuilder {
+        name: entry_name.clone(),
+        fields: vec![
+            FieldBuilder {
+                multiplicity: Multiplicity::Single,
+                field_type: key_type,
+                name: "key".to_string(),
+                number: 1,
+                options: vec![],
+            },
+            FieldBuilder {
+                multiplicity: Multiplicity::Single,
+                field_type: value_type,
+                name: "value".to_string(),
+                number: 2,
+                options: vec![],
+            },
+        ],
+        ..Default::default()
+    };
+    let field = FieldBuilder {
+        multiplicity: Multiplicity::Repeated,
+        field_type: FieldTypeBuilder::Unknown(entry_name),
+        name,
+        number,
+        options,
+    };
+
+    (entry, field)
+}
+
+/// Name of the entry message for a map field, the same as `protoc` uses: the field name in
+/// PascalCase followed by `Entry`. For example `string_values` becomes `StringValuesEntry`.
+fn map_entry_name(field_name: &str) -> String
+{
+    let mut name = String::with_capacity(field_name.len() + 5);
+    let mut capitalize_next = true;
+    for c in field_name.chars() {
+        if c == '_' {
+            capitalize_next = true;
+        } else if capitalize_next {
+            name.push(c.to_ascii_uppercase());
+            capitalize_next = false;
+        } else {
+            name.push(c);
+        }
+    }
+    name.push_str("Entry");
+    name
 }
 
 fn parse_field_type(t: &str) -> FieldTypeBuilder
@@ -470,6 +553,23 @@ fn parse_string_literal(s: Pair<Rule>) -> Bytes
 mod test
 {
     use super::*;
+
+    #[test]
+    fn map_entry_names_match_protoc()
+    {
+        for (field, entry) in [
+            ("values", "ValuesEntry"),
+            ("string_values", "StringValuesEntry"),
+            ("x", "XEntry"),
+            ("tags_by_id", "TagsByIdEntry"),
+            ("camelCase", "CamelCaseEntry"),
+            ("_leading", "LeadingEntry"),
+            ("double__underscore", "DoubleUnderscoreEntry"),
+            ("value_2", "Value2Entry"),
+        ] {
+            assert_eq!(map_entry_name(field), entry, "{}", field);
+        }
+    }
 
     #[test]
     fn empty()
